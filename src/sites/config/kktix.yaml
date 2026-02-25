@@ -1,0 +1,238 @@
+setting:
+  site_name: "kktix"
+  main_url: "https://kktix.com/events"
+  persist_dir: "./user-data"
+  category:
+    - '演唱會'
+  page: 1
+  max_retry: 3
+
+selectors:
+  img: 'img[usemap="#background"]'                      # E_IMG / IMG
+  area: 'map[name="background"] area'                   # E_AREA / AREA
+  bubble: '.map-inner .amount.bubble'                   # E_BUB
+  success: '.seats-table:not(.ng-hide), .seat-area-body, .ticket-list .ticket-seat'  # SUCCESS
+  map_img_selectors:
+    - 'img[usemap="#background"]'
+    - 'img[usemap]'
+    - '.seats-map .map-inner img'
+  
+contents:
+  disable_keywords: 
+    - "身障"
+    - "身心障礙"
+
+modals:
+  modal:
+    - "#infoModal"
+    - "#guestModal"
+    - "#seatTipModal"
+    - ".modal.show"
+    - ".modal.in"
+  txt: 
+    - "知道了"
+    - "暫時不要"
+    - "關閉"
+    - "Close"
+    - "×"
+
+seats:
+  selectors:
+    - ".seats-table:not(.ng-hide)"
+    - ".seat-area-body"
+    - ".ticket-list .ticket-seat"
+
+
+regex:
+  spec_section: 'spec-section-(\d+)'                    # SPEC_RE
+
+captcha:
+  patterns:
+    - recaptcha
+    - g-recaptcha
+    - h-captcha
+    - rc-anchor 
+  iframe: 'iframe[src*="recaptcha"], iframe[src*="hcaptcha"]'
+
+js:
+  extract: |-
+    (() => {
+      const img = document.querySelector('img[usemap="#background"]');
+      const map = document.querySelector('map[name="background"]');
+      if (!img || !map) return { areas: [], bubbles: [] };
+
+      const rect = img.getBoundingClientRect();
+      const natW = img.naturalWidth || 0;
+      const natH = img.naturalHeight || 0;
+      const curW = img.width || rect.width || 0;
+      const curH = img.height || rect.height || 0;
+      const sx = natW ? (curW / natW) : 1;
+      const sy = natH ? (curH / natH) : 1;
+
+      function parsePoints(coordsStr) {
+        const nums = (coordsStr || "")
+          .split(",")
+          .map(n => parseInt(n, 10))
+          .filter(n => !Number.isNaN(n));
+        const pts = [];
+        for (let i = 0; i + 1 < nums.length; i += 2) pts.push([nums[i], nums[i+1]]);
+        return pts;
+      }
+
+      function centroid(shape, coordsStr) {
+        shape = (shape || "").toLowerCase();
+        const nums = (coordsStr || "")
+          .split(",")
+          .map(n => parseInt(n,10))
+          .filter(n => !Number.isNaN(n));
+
+        if (shape === "circle" && nums.length >= 3) {
+          const [x,y] = nums;
+          return [x, y];
+        }
+        if (shape === "rect" && nums.length >= 4) {
+          const [x1,y1,x2,y2] = nums;
+          return [(x1 + x2) / 2, (y1 + y2) / 2];
+        }
+
+        const pts = parsePoints(coordsStr);
+        if (pts.length < 3) {
+          const xs = pts.map(p => p[0]).sort((a,b)=>a-b);
+          const ys = pts.map(p => p[1]).sort((a,b)=>a-b);
+          const mid = arr => arr.length ? arr[Math.floor(arr.length/2)] : 0;
+          return [mid(xs), mid(ys)];
+        }
+        let A = 0, Cx = 0, Cy = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const [x1, y1] = pts[i];
+          const [x2, y2] = pts[(i + 1) % pts.length];
+          const cross = x1 * y2 - x2 * y1;
+          A += cross; Cx += (x1 + x2) * cross; Cy += (y1 + y2) * cross;
+        }
+        A *= 0.5;
+        if (!isFinite(A) || A === 0) {
+          const xs = pts.map(p => p[0]).sort((a,b)=>a-b);
+          const ys = pts.map(p => p[1]).sort((a,b)=>a-b);
+          const mid = arr => arr.length ? arr[Math.floor(arr.length/2)] : 0;
+          return [mid(xs), mid(ys)];
+        }
+        return [Cx / (6 * A), Cy / (6 * A)];
+      }
+
+      const areas = [...map.querySelectorAll("area")].map(a => {
+        const alt     = (a.getAttribute("alt") || "").trim();
+        const shape   = (a.getAttribute("shape") || "").toLowerCase();
+        const coords  = a.getAttribute("coords") || "";
+        const cls     = a.className || a.getAttribute("class") || "";
+
+        const [cx, cy] = centroid(shape, coords);
+        const rx = cx * sx;
+        const ry = cy * sy;
+        const viewportX = rect.left + rx;
+        const viewportY = rect.top  + ry;
+
+        const m = cls.match(/spec-section-(\d+)/);
+        const spec_id = m ? m[1] : null;
+
+        return {
+          alt,
+          shape,
+          coords,
+          className: cls,
+          chooseable: cls.includes("chooseable"),
+          spec_id,
+          centroidImg: { x: rx, y: ry },
+          centroidViewport: { x: viewportX, y: viewportY }
+        };
+      });
+
+      const bubbles = [...document.querySelectorAll(".map-inner .amount.bubble")].map(b => {
+        const style = b.getAttribute("style") || "";
+        const leftMatch = /left:\s*([0-9.]+)px/i.exec(style);
+        const topMatch  = /top:\s*([0-9.]+)px/i.exec(style);
+        const left = leftMatch ? parseFloat(leftMatch[1]) : NaN;
+        const top  = topMatch  ? parseFloat(topMatch[1])  : NaN;
+        const text = (b.querySelector(".inner")?.innerText || "").trim();
+        const num  = parseInt(text, 10);
+        const hidden = b.classList.contains("ng-hide");
+        return {
+          rawText: text,
+          count: Number.isNaN(num) ? null : num,
+          hidden,
+          posImg: { x: left, y: top }
+        };
+      });
+
+      return { areas, bubbles };
+    })()
+  
+  seat_table_stats: |
+    () => {
+        const area = document.querySelector(".seats-table:not(.ng-hide) .seats-area") || document.querySelector(".seats-area");
+        if (!area) return { ok:false, reason:"no .seats-area" };
+
+        // 放寬座位選擇器，盡量撈到格子
+        const nodes = Array.from(area.querySelectorAll(
+            ".seat, [kk-seat], [data-seat-id], a[ng-click], [class*='seat-']"
+        ));
+        if (nodes.length === 0) return { ok:false, reason:"no seat nodes" };
+
+        const res = { ok:true, total:0, able:0, not_able:0, already:0, unknown:0, samples:{} };
+        const takeSample = (k, v) => { if (!res.samples[k]) res.samples[k] = v; };
+        const isTrue = v => v === "" || v === "true" || v === true || v === "disabled";
+
+        // 常見關鍵字（全部小寫比對）
+        const RX_NOT_ABLE = /\b(not[-_\s]?available|unavailable|not[_-]?able)\b/;
+        const RX_ABLE     = /\b(seat[-_\s]?available|available|able)\b/;
+        const RX_ALREADY  = /\b(seat[-_\s]?selected|selected|already|occupied|taken)\b/;
+
+        for (const el of nodes) {
+            const cls = ((el.className||"")+"").toLowerCase();
+
+            let state = "unknown";
+
+            // 1) 先用 class 判定（加入 seat-not-available 等變體）
+            if (RX_NOT_ABLE.test(cls)) {
+            state = "not_able";
+            } else if (RX_ALREADY.test(cls)) {
+            state = "already";
+            } else if (RX_ABLE.test(cls)) {
+            state = "able";
+            }
+
+            // 2) data-state 對應（若站點用數值狀態）
+            if (state === "unknown") {
+            const ds = el.getAttribute("data-state") || (el.dataset ? el.dataset.state : null);
+            if (ds != null) {
+                const v = String(ds).trim();
+                // 依站點調整：這裡假設 0=可選, 1=不可選, -1/2=已選
+                if (v === "0") state = "able";
+                else if (v === "1") state = "not_able";
+                else if (v === "-1" || v === "2") state = "already";
+            }
+            }
+
+            // 3) aria/disabled 保底
+            if (state === "unknown") {
+            const disabledAttr = el.getAttribute("disabled");
+            const ariaDisabled = el.getAttribute("aria-disabled");
+            if (isTrue(disabledAttr) || isTrue(ariaDisabled)) {
+                state = "not_able";
+            }
+            }
+
+            // 4) 點擊性保底（不可互動視為不可選）
+            if (state === "unknown") {
+            const cs = getComputedStyle(el);
+            const clickable = cs.pointerEvents !== "none" && cs.visibility !== "hidden" &&
+                                cs.display !== "none" && +(cs.opacity||1) > 0;
+            if (!clickable) state = "not_able";
+            }
+
+            res[state]++; res.total++;
+            if (state === "unknown") takeSample("unknown", (el.className||"")+"");
+            if (!res.samples.any) res.samples.any = (el.className||"")+"";
+        }
+
+        return res;
+        }

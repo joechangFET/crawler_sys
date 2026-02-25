@@ -1,0 +1,3 @@
+2026/01/16-16:15:47.067 4324 Creating DB D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_aegpresents.kktix.cc_0.indexeddb.leveldb since it was missing.
+2026/01/16-16:15:47.091 4324 Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_aegpresents.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/16-16:15:47.875 77fc Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)

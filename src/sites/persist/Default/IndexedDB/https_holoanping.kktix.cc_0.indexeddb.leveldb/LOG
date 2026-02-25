@@ -1,0 +1,13 @@
+2026/01/19-15:54:53.087 b94 Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_holoanping.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/19-15:54:53.089 b94 Recovering log #7
+2026/01/19-15:54:53.091 b94 Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_holoanping.kktix.cc_0.indexeddb.leveldb/000007.log 
+2026/01/19-15:54:53.679 7140 Level-0 table #11: started
+2026/01/19-15:54:53.686 7140 Level-0 table #11: 587 bytes OK
+2026/01/19-15:54:53.688 7140 Delete type=0 #7
+2026/01/19-15:54:53.691 7140 Manual compaction at level-0 from '\x00\x04\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x05\x00\x00\x00' @ 0 : 0; will stop at '\x00\x04\x00\x00\x05' @ 64 : 1
+2026/01/19-15:54:53.691 7140 Compacting 1@0 + 1@1 files
+2026/01/19-15:54:53.697 7140 Generated table #12@0: 8 keys, 554 bytes
+2026/01/19-15:54:53.697 7140 Compacted 1@0 + 1@1 files => 554 bytes
+2026/01/19-15:54:53.698 7140 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/01/19-15:54:53.699 7140 Delete type=2 #11
+2026/01/19-15:54:53.702 b94 Manual compaction at level-0 from '\x00\x04\x00\x00\x05' @ 64 : 1 .. '\x00\x05\x00\x00\x00' @ 0 : 0; will stop at (end)

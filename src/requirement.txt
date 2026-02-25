@@ -1,0 +1,7 @@
+pandas==2.2.3
+playwright==1.55.0
+python-dotenv==1.0.1
+pydantic==2.12.3
+pydantic-settings==2.11.0
+playwright-stealth==2.0.0
+pyyaml==6.0.3

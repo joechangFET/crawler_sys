@@ -1,0 +1,26 @@
+2026/02/23-09:41:52.073 320c Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_binliveco.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/02/23-09:41:52.074 320c Recovering log #20
+2026/02/23-09:41:52.075 320c Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_binliveco.kktix.cc_0.indexeddb.leveldb/000020.log 
+2026/02/23-09:41:52.075 320c Delete type=2 #18
+2026/02/23-09:41:52.969 40fc Level-0 table #25: started
+2026/02/23-09:41:52.973 40fc Level-0 table #25: 601 bytes OK
+2026/02/23-09:41:52.974 40fc Delete type=0 #20
+2026/02/23-09:41:52.975 320c Manual compaction at level-0 from '\x00\x0a\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0a\x00\x00\x05' @ 181 : 1
+2026/02/23-09:41:52.975 320c Compacting 1@0 + 1@1 files
+2026/02/23-09:41:52.978 320c Generated table #26@0: 5 keys, 274 bytes
+2026/02/23-09:41:52.979 320c Compacted 1@0 + 1@1 files => 274 bytes
+2026/02/23-09:41:52.979 320c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/23-09:41:52.980 320c Delete type=2 #25
+2026/02/23-09:41:52.981 320c Manual compaction at level-0 from '\x00\x0a\x00\x00\x05' @ 181 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/02/23-09:41:54.832 4568 Manual compaction at level-0 from '\x00\x0b\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0c\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/02/23-09:41:57.219 40fc Level-0 table #28: started
+2026/02/23-09:41:57.223 40fc Level-0 table #28: 836 bytes OK
+2026/02/23-09:41:57.225 40fc Delete type=2 #22
+2026/02/23-09:41:57.225 40fc Delete type=0 #24
+2026/02/23-09:41:57.226 320c Manual compaction at level-0 from '\x00\x0c\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0c\x00\x00\x05' @ 219 : 1
+2026/02/23-09:41:57.226 320c Compacting 1@0 + 1@1 files
+2026/02/23-09:41:57.230 320c Generated table #29@0: 5 keys, 274 bytes
+2026/02/23-09:41:57.230 320c Compacted 1@0 + 1@1 files => 274 bytes
+2026/02/23-09:41:57.231 320c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/23-09:41:57.231 320c Delete type=2 #28
+2026/02/23-09:41:57.233 320c Manual compaction at level-0 from '\x00\x0c\x00\x00\x05' @ 219 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at (end)

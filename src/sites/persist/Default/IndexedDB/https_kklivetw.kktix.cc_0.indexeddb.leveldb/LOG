@@ -1,0 +1,14 @@
+2026/01/26-15:09:20.428 193c Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_kklivetw.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/26-15:09:20.431 193c Recovering log #130
+2026/01/26-15:09:20.432 193c Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_kklivetw.kktix.cc_0.indexeddb.leveldb/000130.log 
+2026/01/26-15:09:20.433 193c Delete type=2 #128
+2026/01/26-15:09:21.156 193c Level-0 table #135: started
+2026/01/26-15:09:21.161 193c Level-0 table #135: 567 bytes OK
+2026/01/26-15:09:21.162 193c Delete type=0 #130
+2026/01/26-15:09:21.164 193c Manual compaction at level-0 from '\x004\x00\x00\x00' @ 72057594037927935 : 1 .. '\x005\x00\x00\x00' @ 0 : 0; will stop at '\x004\x00\x00\x05' @ 976 : 1
+2026/01/26-15:09:21.165 193c Compacting 1@0 + 1@1 files
+2026/01/26-15:09:21.172 193c Generated table #136@0: 57 keys, 1795 bytes
+2026/01/26-15:09:21.172 193c Compacted 1@0 + 1@1 files => 1795 bytes
+2026/01/26-15:09:21.173 193c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/01/26-15:09:21.173 193c Delete type=2 #135
+2026/01/26-15:09:21.175 193c Manual compaction at level-0 from '\x004\x00\x00\x05' @ 976 : 1 .. '\x005\x00\x00\x00' @ 0 : 0; will stop at (end)

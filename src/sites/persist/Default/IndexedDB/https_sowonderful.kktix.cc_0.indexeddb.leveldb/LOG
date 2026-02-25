@@ -1,0 +1,25 @@
+2026/02/11-19:08:34.610 61fc Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_sowonderful.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/02/11-19:08:34.611 61fc Recovering log #50
+2026/02/11-19:08:34.612 61fc Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_sowonderful.kktix.cc_0.indexeddb.leveldb/000050.log 
+2026/02/11-19:08:34.612 61fc Delete type=2 #48
+2026/02/11-19:08:35.310 c28 Level-0 table #55: started
+2026/02/11-19:08:35.319 c28 Level-0 table #55: 572 bytes OK
+2026/02/11-19:08:35.320 c28 Delete type=0 #50
+2026/02/11-19:08:35.322 c28 Manual compaction at level-0 from '\x00\x0f\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x10\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0f\x00\x00\x05' @ 273 : 1
+2026/02/11-19:08:35.322 c28 Compacting 1@0 + 1@1 files
+2026/02/11-19:08:35.326 c28 Generated table #56@0: 20 keys, 970 bytes
+2026/02/11-19:08:35.326 c28 Compacted 1@0 + 1@1 files => 970 bytes
+2026/02/11-19:08:35.327 c28 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/11-19:08:35.327 c28 Delete type=2 #55
+2026/02/11-19:08:35.329 c28 Manual compaction at level-0 from '\x00\x0f\x00\x00\x05' @ 273 : 1 .. '\x00\x10\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/02/11-19:08:38.040 c28 Level-0 table #58: started
+2026/02/11-19:08:38.046 c28 Level-0 table #58: 575 bytes OK
+2026/02/11-19:08:38.048 c28 Delete type=2 #52
+2026/02/11-19:08:38.048 c28 Delete type=0 #54
+2026/02/11-19:08:38.052 c28 Manual compaction at level-0 from '\x00\x10\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x11\x00\x00\x00' @ 0 : 0; will stop at '\x00\x10\x00\x00\x05' @ 292 : 1
+2026/02/11-19:08:38.052 c28 Compacting 1@0 + 1@1 files
+2026/02/11-19:08:38.055 c28 Generated table #59@0: 25 keys, 1037 bytes
+2026/02/11-19:08:38.055 c28 Compacted 1@0 + 1@1 files => 1037 bytes
+2026/02/11-19:08:38.056 c28 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/11-19:08:38.056 c28 Delete type=2 #58
+2026/02/11-19:08:38.058 c28 Manual compaction at level-0 from '\x00\x10\x00\x00\x05' @ 292 : 1 .. '\x00\x11\x00\x00\x00' @ 0 : 0; will stop at (end)

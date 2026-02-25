@@ -1,0 +1,6 @@
+2026/02/23-09:42:04.819 320c Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_riversidelivehouse.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/02/23-09:42:04.821 320c Recovering log #48
+2026/02/23-09:42:04.821 320c Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_riversidelivehouse.kktix.cc_0.indexeddb.leveldb/000048.log 
+2026/02/23-09:42:04.822 320c Delete type=2 #46
+2026/02/23-09:42:05.204 40fc Manual compaction at level-0 from '\x00\x10\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x11\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/02/23-09:42:07.420 40fc Manual compaction at level-0 from '\x00\x11\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x12\x00\x00\x00' @ 0 : 0; will stop at (end)

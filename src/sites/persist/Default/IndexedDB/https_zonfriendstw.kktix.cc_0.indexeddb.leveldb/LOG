@@ -1,0 +1,7 @@
+2026/01/16-11:03:14.108 3e80 Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_zonfriendstw.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/16-11:03:14.110 3e80 Recovering log #4
+2026/01/16-11:03:14.113 3e80 Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_zonfriendstw.kktix.cc_0.indexeddb.leveldb/000004.log 
+2026/01/16-11:03:14.439 3e80 Level-0 table #8: started
+2026/01/16-11:03:14.446 3e80 Level-0 table #8: 602 bytes OK
+2026/01/16-11:03:14.448 3e80 Delete type=0 #4
+2026/01/16-11:03:14.449 3e80 Manual compaction at level-0 from '\x00\x03\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x04\x00\x00\x00' @ 0 : 0; will stop at (end)

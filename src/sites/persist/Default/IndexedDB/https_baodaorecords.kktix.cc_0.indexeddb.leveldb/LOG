@@ -1,0 +1,25 @@
+2026/02/11-15:18:12.931 126c Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_baodaorecords.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/02/11-15:18:12.932 126c Recovering log #26
+2026/02/11-15:18:12.932 126c Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_baodaorecords.kktix.cc_0.indexeddb.leveldb/000026.log 
+2026/02/11-15:18:12.933 126c Delete type=2 #24
+2026/02/11-15:18:13.368 53f0 Level-0 table #31: started
+2026/02/11-15:18:13.371 53f0 Level-0 table #31: 580 bytes OK
+2026/02/11-15:18:13.372 53f0 Delete type=0 #26
+2026/02/11-15:18:13.373 53f0 Manual compaction at level-0 from '\x00\x0a\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0a\x00\x00\x05' @ 178 : 1
+2026/02/11-15:18:13.373 53f0 Compacting 1@0 + 1@1 files
+2026/02/11-15:18:13.375 53f0 Generated table #32@0: 15 keys, 784 bytes
+2026/02/11-15:18:13.375 53f0 Compacted 1@0 + 1@1 files => 784 bytes
+2026/02/11-15:18:13.376 53f0 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/11-15:18:13.377 53f0 Delete type=2 #31
+2026/02/11-15:18:13.377 53f0 Manual compaction at level-0 from '\x00\x0a\x00\x00\x05' @ 178 : 1 .. '\x00\x0b\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/02/11-15:18:15.827 53f0 Level-0 table #34: started
+2026/02/11-15:18:15.833 53f0 Level-0 table #34: 587 bytes OK
+2026/02/11-15:18:15.834 53f0 Delete type=2 #28
+2026/02/11-15:18:15.834 53f0 Delete type=0 #30
+2026/02/11-15:18:15.836 53f0 Manual compaction at level-0 from '\x00\x0b\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0c\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0b\x00\x00\x05' @ 197 : 1
+2026/02/11-15:18:15.837 53f0 Compacting 1@0 + 1@1 files
+2026/02/11-15:18:15.840 53f0 Generated table #35@0: 20 keys, 878 bytes
+2026/02/11-15:18:15.840 53f0 Compacted 1@0 + 1@1 files => 878 bytes
+2026/02/11-15:18:15.841 53f0 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/11-15:18:15.841 53f0 Delete type=2 #34
+2026/02/11-15:18:15.842 53f0 Manual compaction at level-0 from '\x00\x0b\x00\x00\x05' @ 197 : 1 .. '\x00\x0c\x00\x00\x00' @ 0 : 0; will stop at (end)

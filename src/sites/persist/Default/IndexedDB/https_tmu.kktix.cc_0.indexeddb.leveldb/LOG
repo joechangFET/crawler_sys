@@ -1,0 +1,4 @@
+2026/01/16-11:06:22.438 6bc4 Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_tmu.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/16-11:06:22.439 6bc4 Recovering log #7
+2026/01/16-11:06:22.439 6bc4 Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_tmu.kktix.cc_0.indexeddb.leveldb/000007.log 
+2026/01/16-11:06:22.970 7160 Manual compaction at level-0 from '\x00\x05\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x06\x00\x00\x00' @ 0 : 0; will stop at (end)

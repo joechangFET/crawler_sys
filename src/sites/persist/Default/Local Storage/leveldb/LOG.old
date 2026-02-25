@@ -1,0 +1,21 @@
+2026/02/23-15:21:17.707 5050 Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\Local Storage\leveldb/MANIFEST-000001
+2026/02/23-15:21:17.723 5050 Recovering log #515
+2026/02/23-15:21:17.733 5050 Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\Local Storage\leveldb/000515.log 
+2026/02/23-15:26:37.163 5050 Level-0 table #519: started
+2026/02/23-15:26:37.176 5050 Level-0 table #519: 31692 bytes OK
+2026/02/23-15:26:37.178 5050 Delete type=0 #515
+2026/02/23-15:42:04.983 5ad8 Level-0 table #521: started
+2026/02/23-15:42:04.989 5ad8 Level-0 table #521: 19386 bytes OK
+2026/02/23-15:42:04.990 5ad8 Delete type=0 #518
+2026/02/23-15:42:04.992 5ad8 Compacting 4@0 + 1@1 files
+2026/02/23-15:42:05.013 5ad8 Generated table #522@0: 630 keys, 684456 bytes
+2026/02/23-15:42:05.014 5ad8 Compacted 4@0 + 1@1 files => 684456 bytes
+2026/02/23-15:42:05.014 5ad8 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/23-15:42:05.015 5ad8 Delete type=2 #511
+2026/02/23-15:42:05.015 5ad8 Delete type=2 #514
+2026/02/23-15:42:05.015 5ad8 Delete type=2 #516
+2026/02/23-15:42:05.015 5ad8 Delete type=2 #519
+2026/02/23-15:42:05.015 5ad8 Delete type=2 #521
+2026/02/23-15:42:09.956 5050 Level-0 table #524: started
+2026/02/23-15:42:09.965 5050 Level-0 table #524: 17316 bytes OK
+2026/02/23-15:42:09.967 5050 Delete type=0 #520

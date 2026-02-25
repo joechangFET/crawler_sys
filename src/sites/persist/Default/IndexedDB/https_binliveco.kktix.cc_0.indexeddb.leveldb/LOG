@@ -1,0 +1,25 @@
+2026/02/23-15:42:01.721 3620 Reusing MANIFEST D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_binliveco.kktix.cc_0.indexeddb.leveldb/MANIFEST-000001
+2026/02/23-15:42:01.723 3620 Recovering log #27
+2026/02/23-15:42:01.724 3620 Reusing old log D:\joechang1\Desktop\Azure DevOps\kktix_crawler_poc\kktix_crawler_poc\sites\persist\Default\IndexedDB\https_binliveco.kktix.cc_0.indexeddb.leveldb/000027.log 
+2026/02/23-15:42:01.724 3620 Delete type=2 #26
+2026/02/23-15:42:02.668 3620 Level-0 table #32: started
+2026/02/23-15:42:02.674 3620 Level-0 table #32: 594 bytes OK
+2026/02/23-15:42:02.676 3620 Delete type=0 #27
+2026/02/23-15:42:02.678 3620 Manual compaction at level-0 from '\x00\x0d\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0e\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0d\x00\x00\x05' @ 238 : 1
+2026/02/23-15:42:02.679 3620 Compacting 1@0 + 1@1 files
+2026/02/23-15:42:02.686 3620 Generated table #33@0: 5 keys, 258 bytes
+2026/02/23-15:42:02.686 3620 Compacted 1@0 + 1@1 files => 258 bytes
+2026/02/23-15:42:02.687 3620 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/23-15:42:02.688 3620 Delete type=2 #32
+2026/02/23-15:42:02.689 3620 Manual compaction at level-0 from '\x00\x0d\x00\x00\x05' @ 238 : 1 .. '\x00\x0e\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/02/23-15:42:04.591 3620 Level-0 table #35: started
+2026/02/23-15:42:04.595 3620 Level-0 table #35: 586 bytes OK
+2026/02/23-15:42:04.597 3620 Delete type=2 #29
+2026/02/23-15:42:04.597 3620 Delete type=0 #31
+2026/02/23-15:42:04.600 3620 Manual compaction at level-0 from '\x00\x0e\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0f\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0e\x00\x00\x05' @ 257 : 1
+2026/02/23-15:42:04.600 3620 Compacting 1@0 + 1@1 files
+2026/02/23-15:42:04.605 3620 Generated table #36@0: 5 keys, 258 bytes
+2026/02/23-15:42:04.605 3620 Compacted 1@0 + 1@1 files => 258 bytes
+2026/02/23-15:42:04.606 3620 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/02/23-15:42:04.606 3620 Delete type=2 #35
+2026/02/23-15:42:04.608 3620 Manual compaction at level-0 from '\x00\x0e\x00\x00\x05' @ 257 : 1 .. '\x00\x0f\x00\x00\x00' @ 0 : 0; will stop at (end)

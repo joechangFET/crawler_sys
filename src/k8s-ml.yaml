@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kktix-crawler-poc
+  namespace: ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kktix-crawler-poc
+  template:
+    metadata:
+      labels:
+        app: kktix-crawler-poc
+    spec:
+      containers:
+        - name: crawler
+          image: fetbdcrawacrprod.azurecr.io/kktix_crawler_poc:$(IMAGE_TAG)
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          envFrom:
+            - secretRef:
+                name: kktix-crawler-secrets

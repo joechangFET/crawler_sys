@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from model.metrics import StepMetric, FailureMetric
+from src.model.metrics import StepMetric, FailureMetric
 import time
 
 @dataclass

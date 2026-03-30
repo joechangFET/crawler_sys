@@ -1,0 +1,17 @@
+[project]
+name = "crawler-sys"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "capsolver>=1.0.7",
+    "openai>=2.28.0",
+    "pandas>=3.0.1",
+    "playwright>=1.58.0",
+    "playwright-stealth>=2.0.2",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+]

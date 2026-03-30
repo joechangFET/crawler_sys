@@ -1,12 +1,16 @@
 import time
+from pathlib import Path
 from abc import ABC, abstractmethod
 from logging import Logger
 from collections import Counter, defaultdict
-from core.recaptcha import Recaptcha
-from model.page import PageResult
-from model.enums import ResultCode
-from model.metrics import StepMetric, FailureMetric
-from utils.metrics import CrawlMetrics
+from src.core.recaptcha import Recaptcha
+from src.core.llm import ChatgptClient
+from src.model.page import PageResult
+from src.model.enums import ResultCode
+from src.model.metrics import StepMetric, FailureMetric
+from src.model.llm import LLMConfig
+from src.utils.metrics import CrawlMetrics
+from src.utils.env_loader import env
 
 class BaseCrawler(ABC):
     def __init__(self, context, page, logger: Logger, metrics: CrawlMetrics):
@@ -16,13 +20,20 @@ class BaseCrawler(ABC):
         self.step_metrics: StepMetric = defaultdict(lambda: {"max": 0.0, "total": 0.0, "count": 0})
         self.fail_metrics: FailureMetric = defaultdict(lambda: {"times": 0.0, "count": 0})
         self.metrics = metrics
+        self.env_config = env
 
         self.page_info = None
         self.start_time = None
-        self.url_list = []
+        self.url_list = ["https://emergelivehouse2.kktix.cc/events/a7b3b60c"]
         self.url_counter = 0
         self.result = []
-        self.recaptcha_solver = Recaptcha(self.page, self.logger)
+        self.output_dir = Path("result")
+
+        chatbot_config = LLMConfig(
+            api_key=self.env_config.CHATGPT_API_KEY)
+        self.logger.info(f"Initialized ChatGPT Client with model: {chatbot_config.model_name}")
+        self.chatbot_client = ChatgptClient(chatbot_config)
+        self.recaptcha_solver = Recaptcha(self.page, self.logger, self.env_config.CAPSOLVER_API)
 
     async def run(self):
         await self.navigate()

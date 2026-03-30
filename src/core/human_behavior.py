@@ -2,7 +2,7 @@ import random
 import asyncio
 from typing import Dict, Tuple
 
-from utils.jitter import jitter
+from src.utils.jitter import jitter
 
 # Module-level mouse position tracker keyed by page id.
 # Playwright does not expose a mouse.position() API, so we track it manually.

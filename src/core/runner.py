@@ -1,13 +1,13 @@
 import importlib
-from core.browser import BrowserManager
-from core.human_behavior import _mouse_positions
-from config.env_loader import env
-from utils.logger_factory import LoggerFactory
-from utils.metrics import CrawlMetrics
+from src.core.browser import BrowserManager
+from src.core.human_behavior import _mouse_positions
+from src.utils.env_loader import env
+from src.utils.logger_factory import LoggerFactory
+from src.utils.metrics import CrawlMetrics
 
 
 def load_crawler(site_name: str):
-    module = importlib.import_module(f"sites.{site_name}.crawler")
+    module = importlib.import_module(f"src.sites.{site_name}.crawler")
     class_name = f"{site_name.title().replace('_', '')}Crawler"
     return getattr(module, class_name)
 

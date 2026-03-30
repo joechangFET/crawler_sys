@@ -11,7 +11,7 @@ from playwright_stealth import Stealth
 from core.browser import chrome_context
 from sites.kktix.kktix import Kktix
 from crawler.utils import safe_text
-from config.config_reader import ConfigReader
+from utils.config_reader import ConfigReader
 from config.enum import ResultCode
 from kktix_crawler_poc.utils.logger import Logger
 from model.page import PageResult

@@ -38,27 +38,103 @@
 
 ## 系統架構
 
+### 模組關係圖
+
+```mermaid
+graph TD
+    A([main.py]) --> B
+
+    subgraph Core ["src/core"]
+        B[BrowserManager\nbrowser.py]
+        C[run_crawler\nrunner.py]
+        D[BaseCrawler\nbase.py]
+        HB[human_behavior.py]
+        RC[Recaptcha\nrecaptcha.py]
+        LLM[ChatgptClient\nllm.py]
+    end
+
+    subgraph Site ["src/sites/kktix"]
+        E[KktixCrawler\ncrawler.py]
+        SM[SeatsMap\nmap.py]
+    end
+
+    subgraph External ["外部 API"]
+        OAI[OpenAI API]
+        CAP[CapSolver API]
+        KK[KKTIX Website]
+    end
+
+    subgraph Output ["輸出"]
+        CSV[result/*.csv]
+        LOG[logs/]
+        ART[artifacts/]
+    end
+
+    B --> C
+    C --> E
+    E --> D
+    E --> HB
+    E --> RC
+    E --> LLM
+    E --> SM
+    LLM --> OAI
+    RC --> CAP
+    RC --> ART
+    E --> KK
+    E --> CSV
+    C --> LOG
 ```
-main.py
-  └── BrowserManager (src/core/browser.py)
-        └── run_crawler (src/core/runner.py)
-              └── KktixCrawler (src/sites/kktix/crawler.py)
-                    ├── navigate()
-                    ├── login()
-                    ├── collect()
-                    ├── crawl()
-                    │     ├── _get_event_basic_info()
-                    │     ├── _get_ticket_info()
-                    │     ├── _add_ticket()
-                    │     ├── _check_message_box()
-                    │     │     └── ChatgptClient (src/core/llm.py)
-                    │     ├── _click_next_step_and_check_capcha()
-                    │     │     └── Recaptcha (src/core/recaptcha.py)
-                    │     │           └── CapSolver API
-                    │     └── _get_seats_map_info()
-                    │           └── SeatsMap (src/sites/kktix/map.py)
-                    └── persist()
+
+---
+
+### 爬蟲執行流程
+
+```mermaid
+flowchart TD
+    Start([▶ 啟動]) --> Init["初始化 BrowserManager\n載入持久化 Profile（web/）\nPlaywright Stealth 模式"]
+    Init --> Nav["navigate()\n導航至 KKTIX 活動列表頁面"]
+    Nav --> LoginCheck{Session 有效?}
+    LoginCheck -- 否 --> DoLogin["login()\n貝茲曲線滑鼠 + 隨機打字\n模擬真人帳密輸入"]
+    DoLogin --> Collect
+    LoginCheck -- 是 --> Collect["collect()\n依類別 & 頁數爬取活動 URL 清單"]
+
+    Collect --> LoopCheck{還有活動 URL?}
+    LoopCheck -- 否 --> Persist["persist()\n匯出 result/kktix_時間戳記.csv"]
+    Persist --> End([■ 結束])
+
+    LoopCheck -- 是 --> Goto["前往活動頁面\npage.goto(url)"]
+    Goto --> Basic["_get_event_basic_info()\n標題 / 場次 / 地點 / 主辦單位\n訂票開始 & 結束時間"]
+    Basic --> Ticket["_get_ticket_info()\n篩選可選票種\n（跳過身障 / 站位 / VIP）"]
+    Ticket --> AddTicket["_add_ticket()\n選擇票數並加入購物車"]
+    AddTicket --> NextStep["_click_next_step_and_check_capcha()\n點擊「下一步」"]
+
+    NextStep --> MsgBox{訊息視窗?}
+    MsgBox -- 是 --> GPT["_check_message_box()\nChatGPT 分析題目\n回傳 A/B/C/D 並點選"]
+    GPT --> NextStep
+
+    MsgBox -- 否 --> CaptchaCheck{reCAPTCHA v2?}
+    CaptchaCheck -- 是 --> CapSolve["Recaptcha.detect_recaptcha_v2()\n擷取圖片 → 儲存至 artifacts/\nCapSolver API 分類 → 自動點選"]
+    CapSolve --> NextStep
+
+    CaptchaCheck -- 否 --> SeatMap["_get_seats_map_info()\nJS 注入擷取座位圖座標\nSeatsMap 點擊各區域\n統計 total / able / unavail"]
+
+    SeatMap --> SaveOK{爬取成功?}
+    SaveOK -- 是 --> SaveResult["PageResult.event_type = Complete\n記錄 seat_stats / seat_total\n/ seat_avl / seat_unavl"]
+    SaveOK -- 否 --> Retry{未達 max_retry?}
+    Retry -- 是 --> SeatMap
+    Retry -- 否 --> SaveFail["記錄失敗原因\n(Recaptcha / MessageBox / etc.)"]
+    SaveFail --> LoopCheck
+    SaveResult --> LoopCheck
+
+    style Start fill:#2d8a4e,color:#fff
+    style End fill:#c0392b,color:#fff
+    style GPT fill:#8e44ad,color:#fff
+    style CapSolve fill:#d35400,color:#fff
+    style SeatMap fill:#1a6fa8,color:#fff
+    style Persist fill:#2d8a4e,color:#fff
 ```
+
+---
 
 ### 主要設計決策
 

@@ -1,6 +1,6 @@
 # KKTIX Crawler
 
-一個以 Playwright 與 Python 打造的非同步網路爬蟲，用於收集 [KKTIX](https://kktix.com) 的活動資訊與座位可用狀態。爬蟲模擬真人瀏覽器操作，自動瀏覽活動列表、擷取票券資訊，並分析座位圖統計數據。
+一個以 **Playwright** 與 **Python 3.11** 打造的非同步網路爬蟲系統，用於自動化收集 [KKTIX](https://kktix.com) 的活動資訊與座位可用狀態。系統整合了反爬蟲偵測迴避、reCAPTCHA v2 自動解題（CapSolver）以及 ChatGPT 輔助回答驗證問題等能力。
 
 ---
 
@@ -16,7 +16,6 @@
 - [輸出結果](#輸出結果)
 - [活動類型分類](#活動類型分類)
 - [部署](#部署)
-- [CI/CD 流程](#cicd-流程)
 
 ---
 
@@ -24,10 +23,15 @@
 
 本專案針對 KKTIX 自動化執行以下流程：
 
-1. **Navigate（導航）** — 以隨機延遲模擬真人操作，載入 KKTIX 活動列表頁面。
-2. **Login（登入）** — 使用設定的帳號憑證進行驗證，模擬真實的滑鼠與鍵盤輸入行為。
-3. **Collect（收集）** — 依設定的活動類別爬取活動網址，並自動翻頁。
-4. **Crawl（爬取）** — 針對每個活動擷取後設資料（標題、場次、地點、票券），並進入劃位流程收集各區座位統計。
+1. **Navigate（導航）** — 以隨機延遲模擬真人操作，載入 KKTIX 活動列表頁面，並將瀏覽器 Session 持久化保存以維持登入狀態。
+2. **Login（登入）** — 使用設定的帳號憑證進行驗證，以貝茲曲線模擬真實的滑鼠軌跡與隨機鍵盤輸入行為。
+3. **Collect（收集）** — 依設定的活動類別爬取活動網址清單，並自動翻頁。
+4. **Crawl（爬取）** — 針對每個活動：
+   - 擷取後設資料（標題、場次、地點、主辦單位、訂票時間）
+   - 選擇可購票種並進入劃位流程
+   - 遭遇訊息視窗時，呼叫 **ChatGPT** 自動回答驗證題
+   - 遭遇 reCAPTCHA v2 圖片挑戰時，呼叫 **CapSolver** API 自動解題
+   - 收集各座位區域統計數據（可用 / 已售 / 總數）
 5. **Persist（儲存）** — 將所有結果匯出至帶有時間戳記的 CSV 檔案。
 
 ---
@@ -43,21 +47,29 @@ main.py
                     ├── login()
                     ├── collect()
                     ├── crawl()
-                    │     ├── _get_event_title_time_and_location()
+                    │     ├── _get_event_basic_info()
                     │     ├── _get_ticket_info()
-                    │     ├── _get_seats_map_info()
-                    │     │     └── SeatsMap (src/sites/kktix/map.py)
-                    │     └── _click_next_step_and_check_capcha()
-                    │           └── Recaptcha (src/core/recaptcha.py)
+                    │     ├── _add_ticket()
+                    │     ├── _check_message_box()
+                    │     │     └── ChatgptClient (src/core/llm.py)
+                    │     ├── _click_next_step_and_check_capcha()
+                    │     │     └── Recaptcha (src/core/recaptcha.py)
+                    │     │           └── CapSolver API
+                    │     └── _get_seats_map_info()
+                    │           └── SeatsMap (src/sites/kktix/map.py)
                     └── persist()
 ```
 
-**主要設計決策：**
+### 主要設計決策
 
-- `BrowserManager` 管理單一持久性 Chromium 瀏覽器 Context，並以 Semaphore 控制並發數量。持久性 Context 可跨執行重用瀏覽器儲存空間（cookies、localStorage），維持登入狀態。
-- `BaseCrawler`（`src/core/base.py`）定義抽象爬蟲介面。新增爬蟲站點只需在 `src/sites/<site_name>/crawler.py` 實作對應子類別即可。
-- `src/core/runner.py` 的 `run_crawler` 依站點名稱動態載入爬蟲類別，透過 `asyncio.gather` 支援多站點並行執行。
-- 模擬真人行為的邏輯（貝茲曲線滑鼠軌跡、隨機打字延遲、隨機滾動）集中於 `src/core/human_behavior.py`，供所有爬蟲共用。
+| 元件 | 說明 |
+|---|---|
+| `BrowserManager` | 管理單一持久性 Chromium Context（`web/` 目錄），以 Semaphore 控制並發數量，跨執行保留 cookies / localStorage |
+| `BaseCrawler` | 定義抽象爬蟲介面（`navigate / login / collect / crawl / persist`），新增站點只需在 `src/sites/<name>/crawler.py` 繼承實作 |
+| `runner.py` | 依站點名稱動態 import 爬蟲類別，透過 `asyncio.gather` 支援多站點並行 |
+| `human_behavior.py` | 貝茲曲線滑鼠移動、隨機打字延遲（含錯誤修正模擬）、擬真捲動，集中管理供所有爬蟲共用 |
+| `recaptcha.py` | 偵測 reCAPTCHA v2 anchor / bframe、擷取圖片並呼叫 CapSolver API 分類後自動點選 |
+| `llm.py` | 呼叫 OpenAI API，以精簡 System Prompt 回答選擇題（單字母 A/B/C/D 或 UNKNOWN） |
 
 ---
 
@@ -65,64 +77,65 @@ main.py
 
 ```
 crawler_sys/
-├── .azure/
-│   └── devops-pipelines/
-│       ├── fet-cicd-pipeline.yml              # CI/CD 主流程觸發設定
-│       ├── pipeline-jobs-deployment.yml       # 正式環境部署工作
-│       └── pipeline-jobs-deployment_dev.yml   # 開發環境部署工作
+│
+├── main.py                           # 非同步程式進入點
+├── Dockerfile                        # 容器映像定義（python:3.11-slim + xvfb）
+├── pyproject.toml                    # 專案依賴定義
+├── uv.lock                           # 依賴鎖定檔
+├── .python-version                   # Python 版本鎖定（3.11）
+├── .gitignore
+├── .env                              # 環境變數（帳號憑證 / API Keys，不納入版控）
 │
 ├── src/
 │   ├── config/
-│   │   └── kktix.yaml                         # KKTIX 選擇器與 JS 擷取腳本
+│   │   └── kktix.yaml                # KKTIX CSS 選擇器、模態框設定、JS 擷取腳本
 │   │
 │   ├── core/
-│   │   ├── base.py                            # 抽象 BaseCrawler 類別
-│   │   ├── browser.py                         # BrowserManager（Playwright + Stealth）
-│   │   ├── human_behavior.py                  # 模擬真人滑鼠、鍵盤、滾動行為
-│   │   ├── recaptcha.py                       # reCAPTCHA v2 偵測與 sitekey 擷取
-│   │   └── runner.py                          # 動態爬蟲載入與執行器
+│   │   ├── base.py                   # 抽象 BaseCrawler（定義爬蟲生命週期）
+│   │   ├── browser.py                # BrowserManager（Playwright Stealth + 持久 Context）
+│   │   ├── human_behavior.py         # 擬真滑鼠、鍵盤、捲動行為
+│   │   ├── llm.py                    # ChatgptClient（OpenAI API 整合）
+│   │   ├── recaptcha.py              # reCAPTCHA v2 偵測與 CapSolver 解題
+│   │   └── runner.py                 # 動態爬蟲載入與執行器
 │   │
 │   ├── model/
-│   │   ├── enums.py                           # ResultCode 活動分類列舉
-│   │   ├── metrics.py                         # StepMetric / FailureMetric TypedDicts
-│   │   └── page.py                            # PageResult 資料類別（爬蟲輸出）
+│   │   ├── enums.py                  # ResultCode（活動分類）、ResultColumn 列舉
+│   │   ├── llm.py                    # LLMConfig 設定資料類別
+│   │   ├── metrics.py                # StepMetric / FailureMetric TypedDicts
+│   │   └── page.py                   # PageResult 資料類別（爬蟲輸出格式）
 │   │
 │   ├── sites/
+│   │   ├── utils.py                  # safe_text、parse_coords、centroid 輔助函式
 │   │   ├── kktix/
-│   │   │   ├── crawler.py                     # KktixCrawler 實作
-│   │   │   └── map.py                         # SeatsMap — 座位區域互動
-│   │   ├── states/
-│   │   │   └── kktix.json                     # 持久化瀏覽器儲存狀態
-│   │   └── utils.py                           # safe_text、parse_coords、centroid 輔助函式
+│   │   │   ├── crawler.py            # KktixCrawler 實作
+│   │   │   └── map.py                # SeatsMap（座位區域互動與資料擷取）
+│   │   └── states/
+│   │       └── kktix.json            # 持久化瀏覽器 Session 狀態（不納入版控）
 │   │
 │   └── utils/
-│       ├── config_reader.py                   # Singleton YAML/JSON 設定載入器
-│       ├── env_loader.py                      # 基於 Pydantic 的環境變數設定
-│       ├── jitter.py                          # 隨機延遲產生器
-│       ├── logger_factory.py                  # 建立各站點 Logger 的工廠類別
-│       └── metrics.py                         # CrawlMetrics 資料類別
+│       ├── config_reader.py          # Singleton YAML / JSON 設定載入器
+│       ├── env_loader.py             # 基於 Pydantic 的環境變數設定（singleton）
+│       ├── jitter.py                 # 隨機延遲產生器
+│       ├── logger_factory.py         # 帶 emoji 圖示的 Logger 工廠（終端機 + 檔案）
+│       └── metrics.py                # CrawlMetrics（爬蟲計時與效能統計）
 │
-├── logs/                                      # 執行時期日誌輸出（系統與爬蟲）
-│   ├── system/
-│   └── crawler/kktix/
-│
-├── result/                                    # CSV 輸出目錄
-├── .env                                       # 環境變數（帳號憑證，不納入版控）
-├── .python-version                            # Python 版本鎖定（3.11）
-├── Dockerfile                                 # 容器映像定義
-├── main.py                                    # 非同步程式進入點
-├── pyproject.toml                             # 專案依賴定義
-├── uv.lock                                    # 依賴鎖定檔
-└── README.md
+├── web/                              # Playwright 持久性瀏覽器 Profile（不納入版控）
+├── artifacts/                        # CapSolver 擷取的 reCAPTCHA 挑戰圖片
+├── logs/                             # 執行時期日誌
+│   ├── system/                       # 系統層級日誌
+│   └── crawler/kktix/                # KKTIX 爬蟲日誌
+├── result/                           # CSV 輸出目錄
+└── src/k8s-ml.yaml                   # Kubernetes 部署清單（AKS）
 ```
 
 ---
 
 ## 環境需求
 
-- Python 3.11 以上
-- [uv](https://docs.astral.sh/uv/)（建議）或 pip
-- 已安裝 Playwright 瀏覽器（詳見[安裝步驟](#安裝步驟)）
+- **Python** 3.11+
+- **[uv](https://docs.astral.sh/uv/)** 套件管理工具（建議）或 pip
+- **CapSolver** 帳號及 API Key（reCAPTCHA 自動解題）
+- **OpenAI** API Key（訊息視窗自動回答）
 
 ---
 
@@ -135,7 +148,7 @@ git clone https://github.com/joechangFET/crawler_sys.git
 cd crawler_sys
 ```
 
-**2. 建立並啟用虛擬環境（擇一）**
+**2. 安裝相依套件（擇一）**
 
 使用 uv（建議）：
 ```bash
@@ -145,7 +158,7 @@ uv sync
 使用 pip：
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Linux/macOS
+source .venv/bin/activate        # Linux / macOS
 .venv\Scripts\activate           # Windows
 pip install -e .
 ```
@@ -165,13 +178,27 @@ playwright install chromium
 在專案根目錄建立 `.env` 檔案：
 
 ```env
+# 必填
 LOG_LEVEL=INFO
-HEADLESS=false
 KKTIX_USER=<your_kktix_username>
 KKTIX_PASSWORD=<your_kktix_password>
+CAPSOLVER_API=<your_capsolver_api_key>
+CHATGPT_API_KEY=<your_openai_api_key>
+
+# 選填（預設 true）
+HEADLESS=false
 ```
 
-這些值由 `src/utils/env_loader.py` 透過 Pydantic `BaseSettings` 於執行時期載入。`LOG_LEVEL`、`KKTIX_USER`、`KKTIX_PASSWORD` 為必填欄位，缺少任一將導致程式無法啟動。`HEADLESS` 預設為 `true`（容器環境），本機開發時設為 `false` 以顯示瀏覽器視窗。
+| 變數 | 必填 | 說明 |
+|---|---|---|
+| `LOG_LEVEL` | 是 | 日誌等級（DEBUG / INFO / WARNING / ERROR） |
+| `KKTIX_USER` | 是 | KKTIX 帳號（Email） |
+| `KKTIX_PASSWORD` | 是 | KKTIX 密碼 |
+| `CAPSOLVER_API` | 是 | [CapSolver](https://capsolver.com) API Key，用於 reCAPTCHA v2 自動解題 |
+| `CHATGPT_API_KEY` | 是 | OpenAI API Key，用於訊息視窗選擇題自動回答 |
+| `HEADLESS` | 否 | 瀏覽器無頭模式（預設 `true`；本機除錯建議設 `false`） |
+
+> 以上值由 `src/utils/env_loader.py` 透過 Pydantic `BaseSettings` 於啟動時驗證，任一必填欄位缺失將導致程式立即終止。
 
 ### 站點設定（`src/config/kktix.yaml`）
 
@@ -179,11 +206,15 @@ KKTIX_PASSWORD=<your_kktix_password>
 |---|---|
 | `setting.main_url` | KKTIX 活動列表頁面網址 |
 | `setting.category` | 要爬取的活動類別清單（例如 `演唱會`） |
-| `setting.page` | 翻頁爬取的頁數 |
+| `setting.page` | 翻頁爬取的頁數上限 |
 | `setting.max_retry` | 每個座位區域發生錯誤時的最大重試次數 |
-| `contents.disable_keywords` | 用於識別無障礙座位的關鍵字 |
+| `setting.persist_dir` | 瀏覽器 Profile 持久化目錄（預設 `./web`） |
+| `contents.disable_keywords` | 用於識別無障礙座位並跳過的關鍵字清單 |
 | `selectors.*` | 圖片地圖、氣泡、彈窗、座位表的 CSS 選擇器 |
-| `js.extract` | 注入至頁面以擷取圖片地圖座位區域資料的 JavaScript |
+| `modals.modal` | 需要關閉的模態框選擇器清單 |
+| `modals.txt` | 關閉按鈕文字清單（知道了、關閉、× 等） |
+| `captcha.patterns` | reCAPTCHA / hCaptcha 偵測關鍵字 |
+| `js.extract` | 注入頁面以擷取圖片地圖座位區域坐標與重心的 JavaScript |
 
 ---
 
@@ -195,22 +226,32 @@ KKTIX_PASSWORD=<your_kktix_password>
 python main.py
 ```
 
-爬蟲將依序：
-1. 啟動 Chrome 瀏覽器視窗（依 `HEADLESS` 設定）。
-2. 導航至 KKTIX，若尚未登入則自動登入，並將瀏覽器儲存狀態儲存至 `src/sites/states/kktix.json`。
-3. 依設定的類別頁面收集活動網址。
-4. 針對每個活動網址爬取票券資訊與座位統計。
-5. 將結果寫入 `result/kktix_<YYYYMMDD_HHMMSS>.csv`。
+執行流程：
 
-日誌輸出位置：
-- `logs/system/` — 系統層級啟動日誌
-- `logs/crawler/kktix/` — 各活動爬取日誌
+1. 啟動 Chromium（依 `HEADLESS` 設定決定是否顯示視窗）。
+2. 以 Stealth 模式載入持久化 Profile（`web/`），重用已保存的 Session。
+3. 若尚未登入，自動以模擬真人行為執行登入。
+4. 依 `kktix.yaml` 中設定的類別與頁數收集活動網址。
+5. 針對每個活動依序執行：
+   - 擷取基本資料（標題、場次、地點、主辦單位、訂票時間區間）
+   - 選擇票種、進入劃位頁面
+   - 若出現訊息視窗 → ChatGPT 回答並繼續
+   - 若出現 reCAPTCHA → CapSolver 解題並繼續
+   - 收集座位圖各區域統計
+6. 將結果寫入 `result/kktix_<YYYYMMDD_HHMMSS>.csv`。
+
+**日誌輸出位置：**
+
+| 路徑 | 說明 |
+|---|---|
+| `logs/system/CrawlerSystem_<日期>.log` | 系統層級啟動日誌 |
+| `logs/crawler/kktix/kktix_<日期>.log` | 各活動爬取詳細日誌 |
 
 ---
 
 ## 輸出結果
 
-輸出 CSV 中每一列對應一個已爬取的活動，欄位來自 `src/model/page.py`：
+輸出 CSV 中每一列對應一個已爬取的活動，欄位定義於 `src/model/page.py`：
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
@@ -218,30 +259,33 @@ python main.py
 | `title` | `str` | 活動標題 |
 | `schedule` | `str` | 活動日期／時間 |
 | `location` | `str` | 活動地點 |
-| `event_type` | `str` | 分類結果（詳見下方說明） |
-| `tickets` | `list[dict]` | 所有票種資訊，含名稱、座位、價格、售完狀態 |
-| `seat_stats` | `list[dict]` | 各區域座位計數（total、able、not_able、already、unknown） |
-| `total_seats` | `int` | 座位總數 |
-| `available_seats` | `int` | 可用座位總數 |
-| `sold_seats` | `int` | 不可用座位總數 |
+| `organizer` | `str` | 主辦單位 |
+| `booking_start_time` | `str` | 開放訂票時間 |
+| `booking_end_time` | `str` | 結束訂票時間 |
+| `event_type` | `str` | 活動分類結果（詳見下方說明） |
+| `tickets` | `list[dict]` | 所有票種資訊（名稱、座位、價格、是否售完） |
+| `seat_stats` | `list[dict]` | 各區域座位計數（total / able / not_able / already / unknown） |
+| `seat_total` | `int` | 座位總數 |
+| `seat_avl` | `int` | 可用座位總數 |
+| `seat_unavl` | `int` | 已售出座位總數 |
 | `elapsed_time` | `float` | 處理該活動所耗費的秒數 |
 
 ---
 
 ## 活動類型分類
 
-每個活動依其票券與頁面特徵被賦予一個 `ResultCode`：
+每個活動依票券與頁面特徵被賦予一個 `ResultCode`：
 
-| 代碼 | 說明 |
-|---|---|
-| `Normal` | 一般活動；無座位圖或不適用 |
-| `Computer` | 電腦選位活動 — 無法手動選座 |
-| `VIP Seat` | VIP 專屬座位 |
-| `Disable Seat` | 無障礙／身障座位 |
-| `Standing Seat` | 站席票種 |
-| `MessageBox` | 進入劃位前出現自訂 CAPTCHA 對話框 |
-| `Recaptcha` | 偵測到 Google reCAPTCHA v2 驗證 |
-| `Complete` | 成功收集完整座位圖統計資料 |
+| 代碼 | 中文說明 | 說明 |
+|---|---|---|
+| `Normal` | 無法選位 | 一般活動；無座位圖或不適用 |
+| `Computer` | 電腦自動選位 | 系統自動分配座位，無法手動選擇 |
+| `VIP` | VIP 座位 | VIP 專屬座位區 |
+| `DISABLE` | 身障座位 | 無障礙／身心障礙專屬座位 |
+| `STANDING` | 站位 | 站席票種 |
+| `MESSAGEBOX` | 反爬蟲驗證-訊息視窗 | 進入劃位前出現自訂驗證對話框（ChatGPT 自動回答） |
+| `RECAPCHA` | 反爬蟲驗證-圖片驗證 | 偵測到 Google reCAPTCHA v2（CapSolver 自動解題） |
+| `Complete` | 完整爬取 | 成功收集完整座位圖統計資料 |
 
 ---
 
@@ -249,44 +293,34 @@ python main.py
 
 ### Docker
 
-建置並執行容器映像：
+建置並執行容器映像（需先準備 `.env` 或環境變數）：
 
 ```bash
 docker build -t kktix-crawler .
 docker run --rm --env-file .env kktix-crawler
 ```
 
-`Dockerfile` 以 `python:3.11-slim` 為基礎映像，並安裝 `xvfb` 以支援無頭環境中的虛擬顯示。
+`Dockerfile` 基於 `python:3.11-slim`，安裝 `xvfb` 以在無頭伺服器環境中提供虛擬顯示。
 
-### Kubernetes
+### Kubernetes（AKS）
 
-`src/k8s-ml.yaml` 清單將單一副本部署至 Azure Kubernetes Service（AKS）的 `ml` 命名空間：
+`src/k8s-ml.yaml` 將單一副本部署至 Azure Kubernetes Service 的 `ml` 命名空間：
 
 ```bash
 kubectl apply -f src/k8s-ml.yaml
 ```
 
-容器映像從 Azure Container Registry 拉取：
+映像從 Azure Container Registry 拉取：
 
 ```
-fetbdcrawacrprod.azurecr.io/kktix_crawler:{version}
+fetbdcrawacrprod.azurecr.io/kktix_crawler_poc:{IMAGE_TAG}
 ```
 
----
+資源配置：
 
-## CI/CD 流程
-
-Azure DevOps 流程定義於 `.azure/devops-pipelines/fet-cicd-pipeline.yml`，自動化完整的建置與部署生命週期：
-
-| 階段 | 觸發條件 | 執行動作 |
+| 類型 | CPU | Memory |
 |---|---|---|
-| `DeployToDev` | 推送至 `dev` 分支 | 建置 Docker 映像 → 推送至 ACR → 部署至 AKS（開發環境） |
-| `DeployToProd` | 推送至 `master` 分支 | 建置 Docker 映像 → 推送至 ACR → 部署至 AKS（正式環境） |
+| requests | 250m | 512Mi |
+| limits | 500m | 1Gi |
 
-每個階段的流程步驟：
-1. 簽出原始碼
-2. 安裝 Python 3.11 與 `kubectl`
-3. 建置帶有建置時間戳記標籤的 Docker 映像
-4. 推送映像至 Azure Container Registry
-5. 透過 `kubectl apply` 套用 Kubernetes 清單
-6. 清理 Agent 工作區
+Secret 透過 Kubernetes Secret `kktix-crawler-secrets` 注入（包含 `.env` 中所有必填變數）。

@@ -6,27 +6,24 @@ import pandas as pd
 from dataclasses import asdict
 from datetime import datetime
 from typing import List, Dict, Any
-from pathlib import Path
 from playwright.async_api import TimeoutError as PWTimeout, Error as PWError
 
-from core.base import BaseCrawler
-from core.human_behavior import (
+from src.core.base import BaseCrawler
+from src.core.human_behavior import (
     human_scroll,
     human_click,
     human_type,
     jitter
 )
-from sites.utils import safe_text
-from sites.kktix.map import SeatsMap
-from config.config_reader import ConfigReader
-from config.env_loader import env
-from model.enums import ResultCode
+from src.sites.utils import safe_text
+from src.model.enums import ResultCode, ResultColumn
+from src.sites.kktix.map import SeatsMap
+from src.utils.config_reader import ConfigReader
 
 class KktixCrawler(BaseCrawler):
     def __init__(self, context, page, logger, metrics):
         super().__init__(context, page, logger, metrics)
-        self.env_config = env
-        self.config = ConfigReader("sites/config/kktix.yaml").load()
+        self.config = ConfigReader("src/config/kktix.yaml").load()
         self.ticket_page = None
         self.seats_map_client = SeatsMap(page, self.config, self.logger)
         self.target_nth_order = None
@@ -38,7 +35,7 @@ class KktixCrawler(BaseCrawler):
         await self.page.mouse.move(200, 300)
         await self.page.mouse.wheel(0, random.randint(300, 800))
         await self.page.wait_for_timeout(random.uniform(1000, 2000))
-        await self._save_storage_state(path="sites/states/kktix.json")
+        await self._save_storage_state(path="src/sites/states/kktix.json")
         elapsed = time.perf_counter() - step_start
         self.step_metrics["navigate"].update({"total": elapsed, "max": elapsed, "count": 1})
 
@@ -105,12 +102,15 @@ class KktixCrawler(BaseCrawler):
         self.step_metrics["collect"].update({"total": elapsed, "max": elapsed, "count": 1})
 
     async def crawl(self):
-        self.page_info.title, self.page_info.schedule, self.page_info.location = await self._get_event_title_time_and_location()
+        self.page_info.title, self.page_info.schedule, self.page_info.location, self.page_info.organizer, self.page_info.booking_start_time, self.page_info.booking_end_time = await self._get_event_basic_info()
         self.logger.info(
             "Event Info\n"
             f"  Title: {self.page_info.title}\n"
             f"  Schedule: {self.page_info.schedule}\n"
-            f"  Location: {self.page_info.location}"
+            f"  Location: {self.page_info.location}\n"
+            f"  Organizer: {self.page_info.organizer}\n"
+            f"  Booking Start Time: {self.page_info.booking_start_time}\n"
+            f"  Booking End Time: {self.page_info.booking_end_time}"
         )
         await self._click_next_step()
         if not await self._check_if_allocated():
@@ -131,6 +131,7 @@ class KktixCrawler(BaseCrawler):
                         self.logger.info("reCAPTCHA detected, please solve it manually.")
                     else:
                         await self._get_seats_map_info(max_retry=self.config['setting']['max_retry'])
+                        self.page_info.event_type = ResultCode.Complete.value
                         self._save_page_info()
         
 
@@ -138,11 +139,16 @@ class KktixCrawler(BaseCrawler):
         step_start = time.perf_counter() 
         self.logger.info("Persisting data...")
         self.logger.info(self.result)
-        output_dir = Path("result")
-        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        column_mapping = {
+            col.en: col.zh
+            for col in ResultColumn
+        }
         df = pd.DataFrame([asdict(p) for p in self.result])
+        df.rename(columns=column_mapping, inplace=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        df.to_csv(f"{output_dir}/{self.config['setting']['site_name']}_{timestamp}.csv", index=False, encoding="utf-8-sig")
+        df.to_csv(f"{self.output_dir}/{self.config['setting']['site_name']}_{timestamp}.csv", index=False, encoding="utf-8-sig")
         elapsed = time.perf_counter() - step_start
         self.step_metrics["persist"].update({"total": elapsed, "max": elapsed, "count": 1})
 
@@ -158,7 +164,7 @@ class KktixCrawler(BaseCrawler):
         await self.page.context.storage_state(path=path)
     
     
-    async def _get_event_title_time_and_location(self):
+    async def _get_event_basic_info(self):
         """
         Extract the event start time and location from the event detail page.
 
@@ -168,9 +174,10 @@ class KktixCrawler(BaseCrawler):
           - texts[1]: event location/venue
 
         Returns:
-            tuple[str, str] | None:
-                (event_time, event_location) if found; otherwise None.
+            tuple[str, str, str, str] | None:
+                (event_title, event_time, event_location, organizer) if found; otherwise None.
         """
+        # 取得活動標題 & 基本資訊（時間、地點）
         title = await self.page.title()
         texts = []
         if await self.page.locator("ul.info li").count() > 0:
@@ -187,7 +194,17 @@ class KktixCrawler(BaseCrawler):
                     texts.append(text)
         schedule = texts[0] if len(texts) > 0 else None
         location = texts[1] if len(texts) > 1 else None
-        return title, schedule, location
+
+        # 取得主辦單位
+        organizer = await self.page.locator(".organizers a").first.text_content()
+
+        # 取得活動開始與結束時間
+        period = await self.page.locator("td.period").inner_text()
+        left, right = [x.strip() for x in period.split("~", 1)]
+
+        booking_start_time = left if left else None
+        booking_end_time = right if right else None
+        return title, schedule, location, organizer, booking_start_time, booking_end_time
     
     async def _click_next_step(self):
         if await self.page.locator("a.btn-point").count() > 0:
@@ -232,7 +249,7 @@ class KktixCrawler(BaseCrawler):
             soldout = await unit.locator(":text('已售完')").count() > 0
             
             if not is_target:
-                if "電腦" not in seat and "VIP" not in seat and not any(word in name for word in self.config['contents']['disable_keywords']) and "優惠" not in name:
+                if "電腦" not in seat and "VIP" not in seat and "VIP" not in name and not any(word in name for word in self.config['contents']['disable_keywords']) and "優惠" not in name:
                     if not soldout:
                         is_target = True
                 else:
@@ -255,23 +272,26 @@ class KktixCrawler(BaseCrawler):
 
         if target_ticket_order >= len(tickets):
             self.logger.warning("No eligible ticket found; all tickets are filtered or sold out.")
-            return None
+            target_ticket_order, nth_order = len(tickets) - 1, nth_order - 1
+            #return None
         target_ticket = tickets[target_ticket_order]
         self.target_nth_order = nth_order
+
+        self.logger.debug(f"Target Ticket: {tickets[target_ticket.get('list_order')]}")
         # 電腦選位判定
-        if "電腦" in tickets[target_ticket.get("list_order")].get("seat"):
+        if "電腦" in tickets[target_ticket.get('list_order')].get('seat'):
             self.page_info.event_type = ResultCode.Computer.value
             return ResultCode.Computer.value
         # 站立坐位判定
-        if "站席" in tickets[target_ticket.get("list_order")].get("seat"):
+        if "站席" in tickets[target_ticket.get('list_order')].get('seat'):
            self.page_info.event_type = ResultCode.STANDING.value
            return ResultCode.STANDING.value 
         # VIP坐位判定
-        if "vip" in tickets[target_ticket.get("list_order")].get("name", "").lower():
+        if "vip" in tickets[target_ticket.get('list_order')].get('name', "").lower():
             self.page_info.event_type = ResultCode.VIP.value
             return ResultCode.VIP.value
         # 身障做位判定
-        if any(word in tickets[target_ticket.get("list_order")].get("name") for word in self.config['contents']['disable_keywords']):
+        if any(word in tickets[target_ticket.get('list_order')].get('name') for word in self.config['contents']['disable_keywords']):
             self.page_info.event_type = ResultCode.DISABLE.value
             return ResultCode.DISABLE.value
         return None
@@ -291,6 +311,13 @@ class KktixCrawler(BaseCrawler):
             dlg = self.page.locator(".custom-captcha-inner").first
 
             await dlg.wait_for(state="visible", timeout=3000)
+            text = await dlg.inner_text()
+            messages = [
+                {"role": "user", "content": f"Event: {self.page_info.title} Question: {text}"}
+            ]
+            answer = await self.chatbot_client.chat(messages=messages)
+            self.logger.info(f"Message Box Text: {text} \n ChatGPT Answer: {answer}")
+            await dlg.locator("input").fill(answer)
             self.page_info.event_type = ResultCode.MESSAGEBOX.value
             return True
         except Exception as e:
@@ -314,10 +341,8 @@ class KktixCrawler(BaseCrawler):
         has_captcha = await self.recaptcha_solver.detect_recaptcha_v2()
         if not has_captcha:
             return False
-        sitekey = await self.recaptcha_solver.get_recaptcha_sitekey()
-        if not sitekey:
-            raise RuntimeError("reCAPTCHA detected but sitekey not found")
-        self.logger.info(f"reCAPTCHA sitekey: {sitekey}")
+
+        self.logger.info(f"reCAPTCHA Classfication Target: {self.recaptcha_solver.image_target}")
         return True
     
     async def _get_seats_map_info(self, max_retry: int):

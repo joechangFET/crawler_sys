@@ -4,8 +4,11 @@ setting:
   persist_dir: "./user-data"
   category:
     - '演唱會'
-  page: 10
+  page: 20
   max_retry: 3
+  seat_map_wait_timeout_ms: 20000
+  registration_timeout_safety_seconds: 20
+  min_report_completion_rate: 0.8
 
 selectors:
   img: 'img[usemap="#background"]'                      # E_IMG / IMG

@@ -1,4 +1,10 @@
+"""Legacy standalone browser experiment.
+
+This script predates the modular crawler lifecycle. Use the root main.py
+for normal execution and tests/ for offline regression checks.
+"""
 import asyncio
+import os
 import time
 import pandas as pd
 import argparse
@@ -27,6 +33,7 @@ args = parser.parse_args()
 max_retry = config['setting']['max_retry']
 
 async def main():
+    """Create the system logger and run configured crawlers with a shared browser."""
     async with Stealth().use_async(async_playwright()) as p:
     #async with async_playwright() as p:
         for attempt in range(1, max_retry + 1):
@@ -306,7 +313,7 @@ async def main():
                             site_key = await page.evaluate("() => TIXGLOBAL.pageInfo.recaptcha.sitekeyNormal")
                             
                             import capsolver
-                            capsolver.api_key = 'CAP-DC02DBB6D890DC40DDD2782C3AF2D752FB00E620C27BFA3FE5584FAE7130E5A3'
+                            capsolver.api_key = os.environ["CAPSOLVER_API"]
                             # 2. 呼叫 CapSolver (記得 await)
                             Logger.info(f"URL = {page.url}")
                             Logger.info(f"sitekey = {site_key}")
@@ -342,7 +349,7 @@ async def main():
                             res = await kktix.click_and_skip_on_captcha(btn, click_timeout=5000, watch_timeout=5000)
                             if res is False:
                                 import capsolver
-                                capsolver.api_key = 'CAP-DC02DBB6D890DC40DDD2782C3AF2D752FB00E620C27BFA3FE5584FAE7130E5A3'
+                                capsolver.api_key = os.environ["CAPSOLVER_API"]
 
                                 # 解决一个 reCAPTCHA v2 挑战
                                 solution = await capsolver.solve({

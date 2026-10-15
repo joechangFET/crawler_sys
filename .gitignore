@@ -171,3 +171,11 @@ user-data/*
 # Browser persist / profile data
 sites/persist/
 src/sites/persist/
+# Local crawler runtime data and developer settings
+/web/
+/artifacts/
+/logs/
+/result/
+/src/sites/states/
+/.uv-cache/
+/.claude/

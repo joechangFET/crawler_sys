@@ -4,6 +4,32 @@
 
 ---
 
+## 維護與離線驗證
+
+正式執行入口為根目錄 `main.py`，流程依序為 `BrowserManager` →
+`run_crawler()` → `BaseCrawler.run()` → 站點爬蟲。修改共用生命週期時，
+請從 `src/core/` 著手；KKTIX 頁面互動放在 `src/sites/kktix/`，
+選擇器與頁面擷取腳本放在 `src/config/kktix.yaml`。
+
+`src/playwright_env.py` 與根目錄 `test.py` 是歷史實驗腳本，並非自動化測試。
+它們可能開啟瀏覽器或呼叫外部服務；日常驗證請明確指定 `tests/`：
+
+```bash
+python -m unittest discover -s tests -v
+python -m compileall -q src main.py
+```
+
+離線測試使用標準函式庫 `unittest`，需先安裝專案依賴，但不需要帳密、
+API 金鑰或瀏覽器安裝。涵蓋座標解析、設定快取與重新載入、文字擷取，
+以及座位圖原生點擊、座標備援、遮罩跳過與 DOM 還原。
+這些檢查不代表已完成 KKTIX 實站驗證；網站改版、登入、驗證服務與寄信
+仍需另外進行整合驗證。
+
+清理程式碼時，請先查詢 Python、YAML、啟動腳本及文件的引用，再判定
+函式是否可移除。`load_crawler()` 以站點名稱動態載入類別，不能僅憑
+缺少直接 import 判定站點類別未使用。瀏覽器 Profile、Session、報表與
+執行紀錄屬於執行資料，請勿與原始碼清理一起刪除。
+
 ## 目錄
 
 - [專案概述](#專案概述)
@@ -381,6 +407,12 @@ System Prompt  ≈  60 tokens（固定）
 python main.py
 ```
 
+或使用 `uv`：
+
+```bash
+uv run main.py
+```
+
 執行流程：
 
 1. 啟動 Chromium（依 `HEADLESS` 設定決定是否顯示視窗）。
@@ -401,6 +433,43 @@ python main.py
 |---|---|
 | `logs/system/CrawlerSystem_<日期>.log` | 系統層級啟動日誌 |
 | `logs/crawler/kktix/kktix_<日期>.log` | 各活動爬取詳細日誌 |
+
+---
+
+## Windows 每日排程
+
+專案內已提供兩個 Windows PowerShell 腳本：
+
+- `scripts/run_main.ps1`：在專案根目錄執行 `uv run main.py`，並將排程輸出寫入 `logs/scheduler/`
+- `scripts/register_daily_task.ps1`：註冊 Windows Task Scheduler 每日任務
+
+### 註冊每日任務
+
+以系統管理員 PowerShell 開啟專案根目錄後執行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\register_daily_task.ps1 -Time 09:00
+```
+
+若要建立後立刻測試一次：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\register_daily_task.ps1 -Time 09:00 -RunNow
+```
+
+### 任務管理
+
+```powershell
+Get-ScheduledTask -TaskName CrawlerSysDaily
+Start-ScheduledTask -TaskName CrawlerSysDaily
+Unregister-ScheduledTask -TaskName CrawlerSysDaily -Confirm:$false
+```
+
+### 喚醒電腦注意事項
+
+- 這個排程會啟用 `WakeToRun`，可在電腦進入睡眠時喚醒後執行。
+- 如果電腦是「完全關機」，Windows 工作排程通常無法自動開機；這種情況需要到 BIOS / UEFI 開啟 RTC Alarm / Resume By Alarm 類似功能。
+- 若 `uv` 不在系統 PATH，請先確認 `uv --version` 可在 PowerShell 正常執行。
 
 ---
 

@@ -1,3 +1,9 @@
+"""Implement the KKTIX event-to-report workflow.
+
+Collect event links, inspect ticket types, navigate seat maps with registration
+timeout guards, and export results to CSV with optional email delivery.
+Selectors and extraction scripts come from src/config/kktix.yaml.
+"""
 import asyncio
 import re
 import random
@@ -19,16 +25,31 @@ from src.sites.utils import safe_text
 from src.model.enums import ResultCode, ResultColumn
 from src.sites.kktix.map import SeatsMap
 from src.utils.config_reader import ConfigReader
+from src.utils.mailer import send_report_gmail
+
+
+class KktixRegistrationExpired(RuntimeError):
+    """Signal an expired registration flow or an insufficient countdown margin."""
+    pass
+
 
 class KktixCrawler(BaseCrawler):
+    """Collect KKTIX event metadata, classify tickets and aggregate seat availability."""
     def __init__(self, context, page, logger, metrics):
+        """Load KKTIX configuration and initialize ticket and seat-map state."""
         super().__init__(context, page, logger, metrics)
         self.config = ConfigReader("src/config/kktix.yaml").load()
         self.ticket_page = None
         self.seats_map_client = SeatsMap(page, self.config, self.logger)
         self.target_nth_order = None
+        self.seat_map_wait_timeout_ms = self.config["setting"].get("seat_map_wait_timeout_ms", 20_000)
+        self.registration_timeout_safety_seconds = self.config["setting"].get(
+            "registration_timeout_safety_seconds",
+            20,
+        )
 
     async def navigate(self):
+        """Open the configured event listing and save the browser storage state."""
         step_start = time.perf_counter()
         await self.page.goto(self.config['setting']['main_url'], wait_until="domcontentloaded")
         await self.page.wait_for_timeout(random.uniform(1500, 3000))
@@ -40,8 +61,9 @@ class KktixCrawler(BaseCrawler):
         self.step_metrics["navigate"].update({"total": elapsed, "max": elapsed, "count": 1})
 
     async def login(self):
-        if await self.page.locator('text="登入"').is_visible():   
-            step_start = time.perf_counter()     
+        """Sign in with configured credentials if the login link is visible."""
+        if await self.page.locator('text="登入"').is_visible():
+            step_start = time.perf_counter()
             await human_scroll(self.page, total=1200)
 
             await self.page.click('text="登入"')
@@ -77,11 +99,12 @@ class KktixCrawler(BaseCrawler):
             self.logger.info("Already logged in, skipping login step.")
 
     async def collect(self):
-        step_start = time.perf_counter()  
+        """Follow configured category links and gather selling-event URLs across pages."""
+        step_start = time.perf_counter()
         # Choose the event category
         for item in self.config['setting']['category']:
-                    await self.page.get_by_role("link", name=item, exact=True).click()
-                    self.logger.info(f"活動類別: {item}")
+            await self.page.get_by_role("link", name=item, exact=True).click()
+            self.logger.info(f"活動類別: {item}")
 
         pages = self.config['setting']['page']
         self.metrics.pages = pages
@@ -92,7 +115,7 @@ class KktixCrawler(BaseCrawler):
                 "els => els.map(a => a.href)"       # a.href 會自動轉成絕對網址
             )
             self.url_list.extend(href)
-            try: 
+            try:
                 await self.page.click("a[rel='next']", timeout=5000)
             except Exception as e:
                 self.logger.warning(f"Error clicking next page: {e}")
@@ -102,7 +125,15 @@ class KktixCrawler(BaseCrawler):
         self.step_metrics["collect"].update({"total": elapsed, "max": elapsed, "count": 1})
 
     async def crawl(self):
-        self.page_info.title, self.page_info.schedule, self.page_info.location, self.page_info.organizer, self.page_info.booking_start_time, self.page_info.booking_end_time = await self._get_event_basic_info()
+        """Read event metadata and record ticket classification or seat-map totals."""
+        (
+            self.page_info.title,
+            self.page_info.schedule,
+            self.page_info.location,
+            self.page_info.organizer,
+            self.page_info.booking_start_time,
+            self.page_info.booking_end_time,
+        ) = await self._get_event_basic_info()
         self.logger.info(
             "Event Info\n"
             f"  Title: {self.page_info.title}\n"
@@ -121,25 +152,32 @@ class KktixCrawler(BaseCrawler):
             else:
                 self.ticket_page = self.page.url
                 await self._add_ticket()
-                if await self._check_message_box():
+                await self._check_message_box()
+                await self._click_agree_terms()
+                if await self._click_next_step_and_check_capcha():
+                    self.page_info.event_type = ResultCode.RECAPCHA.value
                     self._save_page_info()
+                    self.logger.info("reCAPTCHA detected, please solve it manually.")
                 else:
-                    await self._click_agree_terms()
-                    if await self._click_next_step_and_check_capcha():
-                        self.page_info.event_type = ResultCode.RECAPCHA.value
-                        self._save_page_info()
-                        self.logger.info("reCAPTCHA detected, please solve it manually.")
-                    else:
+                    try:
                         await self._get_seats_map_info(max_retry=self.config['setting']['max_retry'])
                         self.page_info.event_type = ResultCode.Complete.value
-                        self._save_page_info()
-        
+                    except KktixRegistrationExpired:
+                        self.page_info.event_type = ResultCode.REGISTRATION_TIMEOUT.value
+                        raise
+                    self._save_page_info()
+
 
     async def persist(self):
-        step_start = time.perf_counter() 
+        """Export results to CSV and optionally email the completed report.
+
+        Raises RuntimeError after saving the CSV if the completion rate is below
+        the configured minimum; email delivery is skipped in that case.
+        """
+        step_start = time.perf_counter()
         self.logger.info("Persisting data...")
         self.logger.info(self.result)
-        
+
         self.output_dir.mkdir(parents=True, exist_ok=True)
         column_mapping = {
             col.en: col.zh
@@ -148,12 +186,48 @@ class KktixCrawler(BaseCrawler):
         df = pd.DataFrame([asdict(p) for p in self.result])
         df.rename(columns=column_mapping, inplace=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        df.to_csv(f"{self.output_dir}/{self.config['setting']['site_name']}_{timestamp}.csv", index=False, encoding="utf-8-sig")
+        site_name = self.config['setting']['site_name']
+        output_path = self.output_dir / f"{site_name}_{timestamp}.csv"
+        df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+        total_urls = self.metrics.event_count
+        completed_urls = len(self.result)
+        min_completion_rate = self.config["setting"].get("min_report_completion_rate", 0.8)
+        completion_rate = completed_urls / total_urls if total_urls else 0
+
+        if total_urls and completion_rate < min_completion_rate:
+            self.metrics.success = False
+            self.logger.error(
+                "Report completion rate too low: "
+                f"{completed_urls}/{total_urls} ({completion_rate:.1%}) "
+                f"< {min_completion_rate:.0%}. CSV saved to {output_path}; email skipped."
+            )
+            elapsed = time.perf_counter() - step_start
+            self.step_metrics["persist"].update({"total": elapsed, "max": elapsed, "count": 1})
+            raise RuntimeError(
+                f"Incomplete crawl report: {completed_urls}/{total_urls} URLs completed"
+            )
+
+        if self.env_config.MAIL_SENDER and self.env_config.MAIL_APP_PASSWORD and self.env_config.MAIL_RECEIVERS:
+            self.metrics.finish()
+            send_report_gmail(
+                sender=self.env_config.MAIL_SENDER,
+                app_password=self.env_config.MAIL_APP_PASSWORD,
+                receivers=self.env_config.MAIL_RECEIVERS,
+                subject=f"[{site_name.upper()} Crawler] 報表 {timestamp}",
+                results=self.result,
+                site=site_name,
+                duration=self.metrics.total_time_str,
+                attachment_path=output_path,
+                logger=self.logger,
+            )
+
         elapsed = time.perf_counter() - step_start
         self.step_metrics["persist"].update({"total": elapsed, "max": elapsed, "count": 1})
 
     ############################################# Private Function #############################################
     def _save_page_info(self):
+        """Append the current event result after recording its elapsed crawl time."""
         self.page_info.elapsed_time = time.perf_counter() - self.start_time
         self.result.append(self.page_info)
         self.logger.info(f"Event Type: {self.page_info.event_type}")
@@ -161,9 +235,10 @@ class KktixCrawler(BaseCrawler):
         self.logger.info(self.page_info)
 
     async def _save_storage_state(self, path:str):
+        """Write the current context cookies and storage state to the supplied path."""
         await self.page.context.storage_state(path=path)
-    
-    
+
+
     async def _get_event_basic_info(self):
         """
         Extract the event start time and location from the event detail page.
@@ -174,8 +249,9 @@ class KktixCrawler(BaseCrawler):
           - texts[1]: event location/venue
 
         Returns:
-            tuple[str, str, str, str] | None:
-                (event_title, event_time, event_location, organizer) if found; otherwise None.
+            tuple:
+                Title, schedule, location, organizer, booking start and booking end.
+                Missing fields are returned as None (the title comes from page.title()).
         """
         # 取得活動標題 & 基本資訊（時間、地點）
         title = await self.page.title()
@@ -196,17 +272,27 @@ class KktixCrawler(BaseCrawler):
         location = texts[1] if len(texts) > 1 else None
 
         # 取得主辦單位
-        organizer = await self.page.locator(".organizers a").first.text_content()
+        try:
+            organizer = await self.page.locator(".organizers a").first.text_content()
+        except Exception as e:
+            organizer = None
+            self.logger.warning(f"Error extracting organizer info: {e}")
 
         # 取得活動開始與結束時間
-        period = await self.page.locator("td.period").inner_text()
-        left, right = [x.strip() for x in period.split("~", 1)]
+        try:
+            period = await self.page.locator("td.period").first.inner_text()
+            left, right = [x.strip() for x in period.split("~", 1)]
 
-        booking_start_time = left if left else None
-        booking_end_time = right if right else None
+            booking_start_time = left if left else None
+            booking_end_time = right if right else None
+        except Exception as e:
+            booking_start_time = None
+            booking_end_time = None
+            self.logger.warning(f"Error extracting booking time info: {e}")
         return title, schedule, location, organizer, booking_start_time, booking_end_time
-    
+
     async def _click_next_step(self):
+        """Click the supported event-page ticket button when one is present."""
         if await self.page.locator("a.btn-point").count() > 0:
             btns = self.page.locator("a.btn-point")
             last_btn = btns.nth(await btns.count() - 1)
@@ -221,8 +307,9 @@ class KktixCrawler(BaseCrawler):
             await last_btn.click()
         else:
             self.logger.warning("⚠️ 沒有找到任何 a.btn-point 元素")
-    
+
     async def _check_if_allocated(self):
+        """Return whether the registration step bar includes a seat-selection step."""
         await self.page.wait_for_selector(".step-bar-wrapper .step-bar", timeout=15000)
         names = await self.page.locator(".step-bar-wrapper ul li span:not(.step)").all_inner_texts()
         clean_names = [n.split("\n", 1)[-1].strip() for n in names]
@@ -232,9 +319,14 @@ class KktixCrawler(BaseCrawler):
             return False
         else:
             return True
-    
+
     async def _get_ticket_info(self):
         # 新增可選位票券
+        """Read ticket rows, choose a target and return any excluded ticket classification.
+
+        Stores all ticket rows in page_info.tickets and the selectable button
+        index in target_nth_order. Eligible seat-selection tickets return None.
+        """
         await self.page.wait_for_selector(".ticket-unit", timeout=15000)
         units = self.page.locator(".ticket-unit")
         tickets = []
@@ -247,7 +339,7 @@ class KktixCrawler(BaseCrawler):
             seat = await safe_text(unit, ".ticket-seat, .title")
             price = await safe_text(unit, ".ticket-price, .price")
             soldout = await unit.locator(":text('已售完')").count() > 0
-            
+
             if not is_target:
                 if "電腦" not in seat and "VIP" not in seat and "VIP" not in name and not any(word in name for word in self.config['contents']['disable_keywords']) and "優惠" not in name:
                     if not soldout:
@@ -273,7 +365,6 @@ class KktixCrawler(BaseCrawler):
         if target_ticket_order >= len(tickets):
             self.logger.warning("No eligible ticket found; all tickets are filtered or sold out.")
             target_ticket_order, nth_order = len(tickets) - 1, nth_order - 1
-            #return None
         target_ticket = tickets[target_ticket_order]
         self.target_nth_order = nth_order
 
@@ -285,7 +376,7 @@ class KktixCrawler(BaseCrawler):
         # 站立坐位判定
         if "站席" in tickets[target_ticket.get('list_order')].get('seat'):
            self.page_info.event_type = ResultCode.STANDING.value
-           return ResultCode.STANDING.value 
+           return ResultCode.STANDING.value
         # VIP坐位判定
         if "vip" in tickets[target_ticket.get('list_order')].get('name', "").lower():
             self.page_info.event_type = ResultCode.VIP.value
@@ -305,8 +396,9 @@ class KktixCrawler(BaseCrawler):
         await btn.wait_for(state="visible")
         await btn.scroll_into_view_if_needed()
         await btn.click()
-        
+
     async def _check_message_box(self):
+        """Answer a visible verification question; return False on absence or failure."""
         try:
             dlg = self.page.locator(".custom-captcha-inner").first
 
@@ -324,11 +416,32 @@ class KktixCrawler(BaseCrawler):
             self.logger.warning(f"對話框未出現或已關閉: {e}")
             return False
 
-    async def _click_agree_terms(self):
-        await self.page.locator("#person_agree_terms").check()
-        self.logger.debug("已勾選同意條款")
-    
+    async def _click_agree_terms(self) -> bool:
+        """Check the first available consent checkbox, using a short timeout per candidate."""
+        selectors = (
+            "#person_agree_terms",
+            'input[name="person_agree_terms"]',
+            'input[type="checkbox"][name*="agree"]',
+            'input[type="checkbox"][id*="agree"]',
+        )
+
+        for selector in selectors:
+            checkbox = self.page.locator(selector).first
+            if await checkbox.count() == 0:
+                continue
+
+            try:
+                await checkbox.check(timeout=3000)
+                self.logger.debug(f"已勾選同意條款 ({selector})")
+                return True
+            except (PWTimeout, PWError) as e:
+                self.logger.debug(f"同意條款欄位無法勾選 ({selector}): {e}")
+
+        self.logger.warning("找不到可勾選的同意條款欄位，略過此步驟")
+        return False
+
     async def _click_next_step_and_check_capcha(self):
+        """Advance registration and return whether the solver reports a CAPTCHA."""
         btn = self.page.locator("button.btn-primary").nth(0)
 
         try:
@@ -344,16 +457,184 @@ class KktixCrawler(BaseCrawler):
 
         self.logger.info(f"reCAPTCHA Classfication Target: {self.recaptcha_solver.image_target}")
         return True
-    
+
+    async def _is_registration_expired(self) -> bool:
+        """Look for known registration-timeout messages in the current page body."""
+        try:
+            body_text = await self.page.locator("body").inner_text(timeout=1500)
+        except Exception:
+            return False
+
+        expired_patterns = [
+            "發生逾時",
+            "發生超時",
+            "已逾時",
+            "已超時",
+            "逾時狀況",
+            "超時狀況",
+            "報名時間已過",
+            "購票時間已過",
+            "registration timeout",
+            "time out",
+            "timed out",
+        ]
+        text = body_text.lower()
+        return any(pattern.lower() in text for pattern in expired_patterns)
+
+    async def _raise_if_registration_expired(self):
+        """Raise KktixRegistrationExpired if the page reports a registration timeout."""
+        if await self._is_registration_expired():
+            raise KktixRegistrationExpired("KKTIX registration flow expired")
+
+    async def _get_registration_remaining_seconds(self) -> int | None:
+        """Read a visible countdown, falling back to relevant body lines; return None if unknown."""
+        try:
+            timer_texts = await self.page.evaluate(
+                """
+                () => {
+                  const selectors = [
+                    '#countdown',
+                    '.countdown',
+                    '.timer',
+                    '.time-left',
+                    '[id*="countdown" i]',
+                    '[class*="countdown" i]',
+                    '[id*="timer" i]',
+                    '[class*="timer" i]',
+                    '[ng-bind*="countdown" i]',
+                    '[ng-bind*="timer" i]'
+                  ];
+                  const nodes = [...document.querySelectorAll(selectors.join(','))];
+                  return nodes
+                    .filter(el => {
+                      const style = window.getComputedStyle(el);
+                      return style.display !== 'none' && style.visibility !== 'hidden';
+                    })
+                    .map(el => (el.innerText || el.textContent || '').trim())
+                    .filter(Boolean);
+                }
+                """
+            )
+        except Exception:
+            return None
+
+        for text in timer_texts:
+            remaining = self._parse_remaining_seconds(text)
+            if remaining is not None:
+                return remaining
+
+        try:
+            body_text = await self.page.locator("body").inner_text(timeout=1500)
+        except Exception:
+            return None
+
+        for line in body_text.splitlines():
+            if any(keyword in line for keyword in ["剩餘", "倒數", "時間", "保留", "完成"]):
+                remaining = self._parse_remaining_seconds(line)
+                if remaining is not None:
+                    return remaining
+        return None
+
+    @staticmethod
+    def _parse_remaining_seconds(text: str) -> int | None:
+        """Parse HH:MM:SS, MM:SS or minute/second text into seconds, or return None."""
+        normalized = re.sub(r"\s+", "", text or "")
+
+        match = re.search(r"(\d{1,2}):(\d{2}):(\d{2})", normalized)
+        if match:
+            hours, minutes, seconds = map(int, match.groups())
+            return hours * 3600 + minutes * 60 + seconds
+
+        match = re.search(r"(\d{1,2}):(\d{2})", normalized)
+        if match:
+            minutes, seconds = map(int, match.groups())
+            return minutes * 60 + seconds
+
+        minute_match = re.search(r"(\d+)[分m]", normalized, re.IGNORECASE)
+        second_match = re.search(r"(\d+)[秒s]", normalized, re.IGNORECASE)
+        if minute_match or second_match:
+            minutes = int(minute_match.group(1)) if minute_match else 0
+            seconds = int(second_match.group(1)) if second_match else 0
+            return minutes * 60 + seconds
+
+        return None
+
+    async def _get_guarded_wait_timeout_ms(self, default_ms: int | None = None) -> int:
+        """Limit a wait to the countdown minus the configured safety margin.
+
+        Returns a timeout in milliseconds. Raises KktixRegistrationExpired
+        when the registration has expired or no usable safety margin remains.
+        """
+        await self._raise_if_registration_expired()
+        remaining = await self._get_registration_remaining_seconds()
+        timeout_ms = default_ms or self.seat_map_wait_timeout_ms
+        if remaining is None:
+            return timeout_ms
+
+        usable_seconds = remaining - self.registration_timeout_safety_seconds
+        if usable_seconds <= 0:
+            raise KktixRegistrationExpired(
+                f"KKTIX registration countdown nearly expired: {remaining}s remaining"
+            )
+        return max(1000, min(timeout_ms, usable_seconds * 1000))
+
+    async def _wait_for_seat_table_or_expired(self, timeout_ms: int):
+        """Poll until seats appear, registration expires or the supplied timeout elapses."""
+        deadline = time.monotonic() + timeout_ms / 1000
+        last_remaining: int | None = None
+
+        while time.monotonic() < deadline:
+            await self._raise_if_registration_expired()
+            remaining = await self._get_registration_remaining_seconds()
+            if remaining is not None:
+                last_remaining = remaining
+                if remaining <= self.registration_timeout_safety_seconds:
+                    raise KktixRegistrationExpired(
+                        f"KKTIX registration countdown nearly expired: {remaining}s remaining"
+                    )
+
+            table_ready = await self.page.evaluate(
+                """
+                () => {
+                  const area = document.querySelector(".seats-table:not(.ng-hide) .seats-area");
+                  if (!area) return false;
+                  const nodes = area.querySelectorAll(
+                    ".seat, [kk-seat], [data-seat-id], a[ng-click], [class*='seat-']"
+                  );
+                  return nodes.length > 0;
+                }
+                """
+            )
+            if table_ready:
+                return
+
+            await self.page.wait_for_timeout(500)
+
+        raise PWTimeout(
+            f"Seat table did not become ready within {timeout_ms}ms"
+            + (f"; countdown={last_remaining}s" if last_remaining is not None else "")
+        )
+
     async def _get_seats_map_info(self, max_retry: int):
-        step_start = time.perf_counter() 
+        """Visit selectable sections with retries and aggregate seat counts into page_info.
+
+        Includes unavailable sections in the report and checks registration
+        timeouts while waiting for section tables.
+        """
+        step_start = time.perf_counter()
         # open seat map panel (keep your logic)
         btn = self.page.locator("button.btn-primary.pull-right").nth(0)
+        await self._raise_if_registration_expired()
         await btn.wait_for(state="visible")
         await btn.scroll_into_view_if_needed()
         await btn.click()
 
-        await self.page.wait_for_selector("#registrationsShowApp", state="attached", timeout=30000)
+        await self.page.wait_for_selector(
+            "#registrationsShowApp",
+            state="attached",
+            timeout=await self._get_guarded_wait_timeout_ms(30_000),
+        )
+        await self._raise_if_registration_expired()
 
         # collect sections
         sections = await self.seats_map_client.page.evaluate(self.seats_map_client.config["js"]["extract"])
@@ -386,11 +667,12 @@ class KktixCrawler(BaseCrawler):
             await self.page.locator("#infoModal button.close").click()
         except PWError:
             self.logger.info("No info modal found or already closed")
-       
+
         try:
             for s in candidates:
                 for times in range(max_retry):
                     try:
+                        await self._raise_if_registration_expired()
                         alt = (s.get("alt") or "").strip()
                         if not alt:
                             continue
@@ -417,25 +699,14 @@ class KktixCrawler(BaseCrawler):
                         """)
 
 
-                        await self.page.wait_for_function("""
-                        () => {
-                        const area = document.querySelector(".seats-table:not(.ng-hide) .seats-area");
-                        if (!area) return false;
-                        const nodes = area.querySelectorAll(
-                            ".seat, [kk-seat], [data-seat-id], a[ng-click], [class*='seat-']"
-                        );
-                        return nodes.length > 0;
-                        }
-                        """, timeout=240000)
+                        await self._wait_for_seat_table_or_expired(
+                            await self._get_guarded_wait_timeout_ms(self.seat_map_wait_timeout_ms)
+                        )
 
 
                         # 3) stats
                         stats = await self.page.evaluate(self.seats_map_client.config["js"]["seat_table_stats"])
                         self.logger.debug(f"[{alt}] seat_table_stats: {stats}")
-                        # if not stats or not stats.get("ok"):
-                        #     self.logger.debug(f"[{alt}] seat_table_stats failed: {stats.get('reason') if stats else 'no stats'}")
-                        #     await self.seats_map_client.back_to_map_if_needed()
-                        #     continue
 
                         seat_stat = {
                             "area": alt,
@@ -469,20 +740,27 @@ class KktixCrawler(BaseCrawler):
                                 self.logger.debug(f"Back to map successfully for area {alt} by clicking {btn}")
                                 break
                         break
+                    except KktixRegistrationExpired:
+                        self.logger.warning("KKTIX registration expired while processing seat map; retry current URL immediately.")
+                        raise
                     except Exception as e:
                         self.fail_metrics["seat_map"]["times"] += time.perf_counter() - step_start
                         self.fail_metrics["seat_map"]["count"] += 1
                         # 發生錯誤時拍照紀錄，但不中斷整體迴圈
-                        state = await self.page.evaluate("""
-                            () => {
-                            if (!window.angular) return { angular:false };
-                            const inj = angular.element(document.body).injector?.();
-                            if (!inj) return { angular:true, injector:false };
-                            const $http = inj.get('$http');
-                            return { angular:true, injector:true, pending:$http.pendingRequests.length };
-                            }
-                        """)
+                        try:
+                            state = await self.page.evaluate("""
+                                () => {
+                                if (!window.angular) return { angular:false };
+                                const inj = angular.element(document.body).injector?.();
+                                if (!inj) return { angular:true, injector:false };
+                                const $http = inj.get('$http');
+                                return { angular:true, injector:true, pending:$http.pendingRequests.length };
+                                }
+                            """)
+                        except Exception as state_error:
+                            state = {"state_error": str(state_error)}
                         self.logger.error(f"第{times + 1}次嘗試 處理區域 {alt} 時發生異常 Angular State: {state}: {e}", exc_info=True)
+                        await self._raise_if_registration_expired()
                         await self.page.evaluate("""
                             () => {
                             const tableEl = document.querySelector('[ng-controller="SeatsTableCtrl"]');
@@ -502,8 +780,9 @@ class KktixCrawler(BaseCrawler):
                             }
                         """)
                         self.logger.debug(f"Current ticket page: {self.ticket_page}")
-                        await self.page.goto(self.ticket_page, wait_until="domcontentloaded")
-                        await asyncio.sleep(30)
+                        await self.page.goto(self.ticket_page, wait_until="domcontentloaded", timeout=30000)
+                        await self.page.wait_for_timeout(3000)
+                        await self._raise_if_registration_expired()
                         await self._add_ticket()
                         await self._click_agree_terms()
                         await self._click_next_step_and_check_capcha()
@@ -511,6 +790,8 @@ class KktixCrawler(BaseCrawler):
                             await self.page.locator("#infoModal button.close").click()
                         except PWError:
                             self.logger.info("No info modal found or already closed")
+        except KktixRegistrationExpired:
+            raise
         except PWError as e:
             self.logger.warning(f"Error during seat map processing: {e}", exc_info=True)
             pass
@@ -518,5 +799,3 @@ class KktixCrawler(BaseCrawler):
         self.page_info.seat_total = seat_total
         self.page_info.seat_avl = seat_avl
         self.page_info.seat_unavl = seat_unavl
-        
- 

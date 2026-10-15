@@ -1,25 +1,31 @@
+"""Extract optional page text and calculate centers of image-map coordinates."""
 import re
 from typing import Tuple, Sequence
 
 async def safe_text(unit, selector, timeout=3000):
-        loc = unit.locator(selector)
-        if await loc.count() == 0:
-            return ""
-        try:
-            return (await loc.text_content(timeout=timeout) or "").strip()
-        except Exception:
-            return ""
+    """Return stripped locator text, or an empty string for missing or unreadable content."""
+    loc = unit.locator(selector)
+    if await loc.count() == 0:
+        return ""
+    try:
+        return (await loc.text_content(timeout=timeout) or "").strip()
+    except Exception:
+        return ""
 
 def parse_coords(coords: str) -> Sequence[int]:
     # 允許空白、換行；只抓整數（image map coords 只會是整數）
+    """Extract signed integers from an image-map coordinate string."""
     return [int(m) for m in re.findall(r"-?\d+", coords or "")]
 
 def centroid(coords: str) -> Tuple[float, float]:
-    """
-    依 coords 長度判斷 shape:
-      - circle: x,y,r  -> (x,y)
-      - rect:   x1,y1,x2,y2 -> ((x1+x2)/2, (y1+y2)/2)
-      - poly:   x1,y1,x2,y2,...,xn,yn -> 多邊形重心
+    """Return the center of circle, rectangle or polygon image-map coordinates.
+
+    Circle input is x,y,r; rectangles use x1,y1,x2,y2. Polygons use
+    alternating x,y values and the signed-area centroid formula. Degenerate
+    polygons fall back to the mean of their vertices.
+
+    Raises:
+        ValueError: The input cannot represent a supported shape.
     """
     nums = parse_coords(coords)
     n = len(nums)
@@ -51,7 +57,8 @@ def centroid(coords: str) -> Tuple[float, float]:
 
     # 萬一格式怪異：回退到所有點的幾何中心（平均）
     if n >= 2 and n % 2 == 0:
-        xs = nums[0::2]; ys = nums[1::2]
+        xs = nums[0::2]
+        ys = nums[1::2]
         return sum(xs) / (n // 2), sum(ys) / (n // 2)
 
     raise ValueError(f"Bad coords: {coords!r}")

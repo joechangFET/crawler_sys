@@ -1,3 +1,4 @@
+"""Track crawl timestamps, elapsed duration and per-step aggregate statistics."""
 from dataclasses import dataclass, field
 from datetime import datetime
 from src.model.metrics import StepMetric, FailureMetric
@@ -5,6 +6,7 @@ import time
 
 @dataclass
 class CrawlMetrics:
+    """Accumulate run statistics and expose formatted timestamps and elapsed duration."""
     site: str
 
     # 人類可讀時間
@@ -17,22 +19,25 @@ class CrawlMetrics:
 
     event_count: int = 0
     pages: int = 0
-    steps: dict[str, StepMetric] = field(default_factory=dict)
-    failed: dict[str, FailureMetric] = field(default_factory=dict)
+    steps: StepMetric = field(default_factory=dict)
+    failed: FailureMetric = field(default_factory=dict)
     success: bool = True
     duration: str = ""
 
     def finish(self):
+        """Record the end timestamp and performance counter, then update duration."""
         self.end_dt = datetime.now()
         self._end_perf = time.perf_counter()
         self.duration = self.total_time_str
-    
+
     @property
     def total_seconds(self) -> float:
+        """Return the difference between end and start counters; call finish() first."""
         return self._end_perf - self._start_perf
 
     @property
     def total_time_str(self) -> str:
+        """Format elapsed time as whole hours, minutes and seconds."""
         seconds = int(self.total_seconds)
         h = seconds // 3600
         m = (seconds % 3600) // 60
@@ -41,10 +46,10 @@ class CrawlMetrics:
 
     @property
     def start_time_str(self) -> str:
+        """Format the local start timestamp as YYYY-MM-DD HH:MM:SS."""
         return self.start_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     @property
     def end_time_str(self) -> str:
+        """Format the local end timestamp, or return an empty string before completion."""
         return self.end_dt.strftime("%Y-%m-%d %H:%M:%S") if self.end_dt else ""
-
-    

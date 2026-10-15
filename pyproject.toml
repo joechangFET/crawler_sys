@@ -1,7 +1,7 @@
 [project]
 name = "crawler-sys"
 version = "0.1.0"
-description = "Add your description here"
+description = "Asynchronous Playwright crawler for KKTIX event metadata, seat availability, and CSV reporting."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

@@ -1,3 +1,8 @@
+"""Provide randomized Playwright mouse, keyboard and scrolling interactions.
+
+Delay values passed to jitter() are milliseconds; asyncio.sleep() calls
+convert them to seconds. Mouse positions are tracked by page identity.
+"""
 import random
 import asyncio
 from typing import Dict, Tuple
@@ -59,6 +64,7 @@ async def human_move_mouse(page, x, y, steps=20):
 
 
 async def human_scroll(page, total=2000):
+    """Scroll downward in random increments with occasional short reverse movements."""
     scrolled = 0
     while scrolled < total:
         delta = random.randint(120, 480)
@@ -71,6 +77,7 @@ async def human_scroll(page, total=2000):
 
 
 async def human_type(locator, text: str):
+    """Type text with randomized delays and occasional corrected typing mistakes."""
     for ch in text:
         await locator.type(ch, delay=jitter(80))
         if random.random() < 0.02:
@@ -79,6 +86,7 @@ async def human_type(locator, text: str):
 
 
 async def wait_page_ready(page):
+    """Wait for DOM content, network idle and a final randomized delay."""
     await page.wait_for_load_state("domcontentloaded")
     await page.wait_for_load_state("networkidle")
     await page.wait_for_timeout(jitter(600))

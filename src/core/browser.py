@@ -1,9 +1,13 @@
+"""Manage a persistent Chromium context and limit concurrently active pages.
+
+Pages share profile data, cookies and local storage. Each acquired page must
+be released with close_page() to return its semaphore slot.
+"""
 import asyncio
 from typing import Tuple
 
 from playwright.async_api import (
     async_playwright,
-    Browser,
     BrowserContext,
     Page,
 )
@@ -25,8 +29,9 @@ class BrowserManager:
         headless: bool = False,
         channel: str = "chrome",
         proxy: dict | None = None,
-        persist_dir: str = "sites/persist",
+        persist_dir: str = "web",
     ):
+        """Configure the persistent profile, launch options and page concurrency limit."""
         self.max_contexts = max_contexts
         self.headless = headless
         self.channel = channel
@@ -37,9 +42,10 @@ class BrowserManager:
         self._sem = asyncio.Semaphore(max_contexts)
 
         self.p = None
-        self.browser: Browser | None = None
+        self.browser: BrowserContext | None = None
 
     async def __aenter__(self):
+        """Start Playwright and launch the persistent Chromium context."""
         self.p = await self._pw_cm.__aenter__()
 
         self.browser = await self.p.chromium.launch_persistent_context(
@@ -54,8 +60,9 @@ class BrowserManager:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
+        """Close the persistent context and exit the Playwright manager."""
         if self.browser:
-            await self.browser.close()
+            await asyncio.wait_for(self.browser.close(), timeout=15)
         await self._pw_cm.__aexit__(exc_type, exc, tb)
 
     async def new_context_page(self) -> Tuple[BrowserContext, Page]:

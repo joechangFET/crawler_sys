@@ -1,3 +1,4 @@
+"""Run the configured site crawlers with a shared persistent browser context."""
 import asyncio
 from src.core.browser import BrowserManager
 from src.core.runner import run_crawler
@@ -6,6 +7,7 @@ from src.utils.logger_factory import LoggerFactory
 
 
 async def main():
+    """Create the system logger and run configured crawlers with a shared browser."""
     system_logger = LoggerFactory.create(
         name="CrawlerSystem",
         log_dir="logs/system",

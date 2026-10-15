@@ -1,3 +1,8 @@
+"""Resolve site crawler classes dynamically and manage each run's resources.
+
+Site identifiers map to src.sites.<site>.crawler and a title-cased crawler
+class name. The runner records failures and releases the acquired page.
+"""
 import importlib
 from src.core.browser import BrowserManager
 from src.core.human_behavior import _mouse_positions
@@ -7,6 +12,7 @@ from src.utils.metrics import CrawlMetrics
 
 
 def load_crawler(site_name: str):
+    """Import the site module and return its conventionally named crawler class."""
     module = importlib.import_module(f"src.sites.{site_name}.crawler")
     class_name = f"{site_name.title().replace('_', '')}Crawler"
     return getattr(module, class_name)
@@ -37,6 +43,8 @@ async def run_crawler(site: str, bm: BrowserManager):
 
     except Exception:
         crawler_logger.exception(f"Error occurred while running crawler for {site}")
+        metrics.success = False
+        raise
 
     finally:
         await bm.close_page(page)

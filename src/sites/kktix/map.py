@@ -1,11 +1,16 @@
-import re
-import asyncio
+"""Click KKTIX image-map sections with native and viewport-based strategies.
+
+Prefer native area clicks, then try fixed offsets around the extracted
+viewport centroid. Temporary bubble pointer-event changes are restored
+in a finally block. Diagnostic helpers log failures on a best-effort basis.
+"""
 from datetime import datetime
-from playwright.async_api import TimeoutError as PWTimeout, Error as PWError
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Optional
 
 class SeatsMap:
+    """Coordinate section clicks and diagnostics for a configured KKTIX seat map."""
     def __init__(self, page, config, logger):
+        """Bind the active page, site configuration and diagnostic logger."""
         self.page = page
         self.config = config
         self.logger = logger
@@ -42,7 +47,7 @@ class SeatsMap:
             )
         except Exception:
             pass
-    
+
     # --------------------------
     # Generic helpers
     # --------------------------
@@ -75,71 +80,198 @@ class SeatsMap:
     # --------------------------
     # Clicking area by alt
     # --------------------------
+
     async def click_section_by_alt(self, alt: str, timeout: int = 20000):
+        """Click a section matched by its alt label and return the current page.
+
+        Exact labels take precedence over substring matches. A native area click
+        is attempted before fixed viewport offsets; obvious overlays are skipped.
+        Bubble pointer-event styles are restored even when clicking fails.
+        The returned page does not guarantee that a seat table has appeared.
+
+        Args:
+            alt: Section label to match; blank or unknown labels are ignored.
+            timeout: Retained for caller compatibility; currently unused.
+        """
         alt = (alt or "").strip()
         if not alt:
             return self.page
 
-        #await self.ensure_view("map", timeout=timeout)
-        #await self.close_any_modal()
-
         data = await self.page.evaluate(self.config["js"]["extract"])
-        areas: List[Dict[str, Any]] = data.get("areas") or []
+        areas = data.get("areas") or []
 
-        target = next((a for a in areas if (a.get("alt") or "").strip() == alt), None)
-        if not target:
-            target = next((a for a in areas if alt in (a.get("alt") or "")), None)
+        target = (
+            next((a for a in areas if (a.get("alt") or "").strip() == alt), None)
+            or next((a for a in areas if alt in (a.get("alt") or "")), None)
+        )
+
         if not target:
             self.logger.debug(f"[click_section_by_alt] alt '{alt}' not found in areas.")
             return self.page
 
         img_sel = self.config["selectors"]["img"]
-        img = self.page.locator(img_sel)
-        await img.scroll_into_view_if_needed()
 
-        # IMPORTANT: do NOT permanently break bubble interactions; keep patch minimal
-        async def _temp_dom_patch():
+        # ---- Minimal DOM patch (safe + reversible) ----
+        async def _pre_patch():
             try:
                 await self.page.evaluate(
-                    "() => {"
-                    "  document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());"
-                    "}"
+                    """() => {
+                    // remove bootstrap-like backdrops
+                    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+
+                    // bubbles sometimes sit above the map; disable pointer events temporarily
+                    document.querySelectorAll('.map-inner .amount.bubble').forEach(b => {
+                        b.dataset._pe = b.style.pointerEvents || "";
+                        b.style.pointerEvents = "none";
+                    });
+                    }"""
                 )
             except Exception:
                 pass
 
-        await _temp_dom_patch()
-
-        pos = target.get("centroidImg") or {}
-        x = float(pos.get("x", 0))
-        y = float(pos.get("y", 0))
-        self.logger.debug(f"[click_section_by_alt] clicking alt={alt}, img-pos=({x:.1f},{y:.1f})")
-
-        async def _do_click() -> None:
-            # try normal click on img position
+        async def _post_patch():
             try:
-                await img.click(position={"x": x, "y": y}, timeout=timeout)
-                return
+                await self.page.evaluate(
+                    """() => {
+                    document.querySelectorAll('.map-inner .amount.bubble').forEach(b => {
+                        b.style.pointerEvents = b.dataset._pe || "";
+                        delete b.dataset._pe;
+                    });
+                    }"""
+                )
+            except Exception:
+                pass
+
+        # ---- install a one-shot click probe to see if the map actually receives the click ----
+        async def _arm_click_probe():
+            try:
+                await self.page.evaluate(
+                    """() => {
+                    window.__kktixLastClick = null;
+                    window.__kktixClickProbe = (e) => {
+                        const t = e.target;
+                        window.__kktixLastClick = {
+                        tag: t?.tagName || null,
+                        id: t?.id || null,
+                        cls: (t?.className && t.className.toString()) || null,
+                        time: Date.now(),
+                        };
+                    };
+                    document.addEventListener('click', window.__kktixClickProbe, {capture:true, once:true});
+                    }"""
+                )
+            except Exception:
+                pass
+
+        async def _read_click_probe():
+            try:
+                return await self.page.evaluate("() => window.__kktixLastClick")
+            except Exception:
+                return None
+
+        # ---- 1) Best: click the <area> by alt (native image-map behavior) ----
+        async def _click_area_by_alt() -> bool:
+            await _arm_click_probe()
+            try:
+                ok = await self.page.evaluate(
+                    """(alt) => {
+                    const areas = [...document.querySelectorAll('map[name="background"] area')];
+                    const a = areas.find(x => (x.getAttribute('alt')||'').trim() === alt)
+                            || areas.find(x => ((x.getAttribute('alt')||'').includes(alt)));
+                    if (!a) return false;
+
+                    // native click on <area>
+                    a.click();
+                    return true;
+                    }""",
+                    alt,
+                )
+                probe = await _read_click_probe()
+                self.logger.debug(f"[click_section_by_alt] area.click issued={ok}, probe={probe}")
+                return bool(ok)
             except Exception as e:
-                self.logger.debug(f"[click_section_by_alt] img.click failed: {e}")
+                self.logger.debug(f"[click_section_by_alt] area.click failed: {e}")
+                return False
 
-            # fallback: dispatch a click at client coordinates using elementFromPoint
-            await self.page.evaluate(
-                """
-                ({imgSel, x, y}) => {
-                  const img = document.querySelector(imgSel);
-                  if (!img) throw new Error("img not found for fallback click");
-                  const r = img.getBoundingClientRect();
-                  const cx = r.left + x;
-                  const cy = r.top + y;
-                  const el = document.elementFromPoint(cx, cy);
-                  (el || img).dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, clientX: cx, clientY: cy}));
-                }
-                """,
-                {"imgSel": img_sel, "x": x, "y": y},
-            )
+        # ---- 2) Fallback: click viewport coords with jitter ----
+        async def _click_by_viewport_jitter() -> bool:
+            vp = target.get("centroidViewport") or {}
+            cx0 = float(vp.get("x", 0))
+            cy0 = float(vp.get("y", 0))
 
-        # If you have _click_and_follow, keep it; otherwise just click in-place.
-        await self.safe_step(f"click_area_{alt}", _do_click, retries=2)
+            jitters = [
+                (0, 0), (6, 0), (-6, 0), (0, 6), (0, -6),
+                (10, 10), (-10, 10), (10, -10), (-10, -10),
+                (14, 0), (-14, 0), (0, 14), (0, -14),
+            ]
 
-        return self.page
+            last_err = None
+
+            for dx, dy in jitters:
+                cx, cy = cx0 + dx, cy0 + dy
+
+                # Debug hit-test path
+                info = await self.page.evaluate(
+                    """({x,y}) => {
+                    const el = document.elementFromPoint(x,y);
+                    if (!el) return { ok:false, reason:"no element", x, y };
+                    const path = [];
+                    let cur = el;
+                    for (let i=0; i<6 && cur; i++){
+                        path.push({
+                        tag: cur.tagName,
+                        id: cur.id || null,
+                        cls: (cur.className && cur.className.toString()) || null
+                        });
+                        cur = cur.parentElement;
+                    }
+                    return { ok:true, x, y, hit: path };
+                    }""",
+                    {"x": cx, "y": cy},
+                )
+                self.logger.debug(f"[click_section_by_alt] hit-test: {info}")
+
+                # Reject obvious overlays
+                ok = await self.page.evaluate(
+                    """({x,y}) => {
+                    const el = document.elementFromPoint(x,y);
+                    if (!el) return false;
+                    if (el.closest('.modal, .modal-backdrop, .loading, .spinner')) return false;
+                    return true;
+                    }""",
+                    {"x": cx, "y": cy},
+                )
+                if not ok:
+                    continue
+
+                await _arm_click_probe()
+                try:
+                    # Use real mouse click (lets browser do imagemap hit testing)
+                    await self.page.mouse.click(cx, cy)
+                    probe = await _read_click_probe()
+                    self.logger.debug(f"[click_section_by_alt] mouse.click probe={probe}")
+                    return True
+                except Exception as e:
+                    last_err = e
+
+            self.logger.debug(f"[click_section_by_alt] viewport jitter click failed: {last_err}")
+            return False
+
+        # ---- Execute with patch guard ----
+        await _pre_patch()
+        try:
+            # Ensure image is in view (helps viewport coords)
+            try:
+                await self.page.locator(img_sel).scroll_into_view_if_needed()
+            except Exception:
+                pass
+
+            # Prefer native area click
+            if await _click_area_by_alt():
+                return self.page
+
+            # Fallback: viewport + jitter
+            await _click_by_viewport_jitter()
+            return self.page
+        finally:
+            await _post_patch()
